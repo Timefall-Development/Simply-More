@@ -1,0 +1,8 @@
+{
+  "replace": false,
+  "values": [
+    "simplymore:decay",
+    "simplymore:lightning",
+    "simplymore:bleed"
+  ]
+}

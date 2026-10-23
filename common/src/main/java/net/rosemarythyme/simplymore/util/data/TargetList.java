@@ -1,0 +1,260 @@
+package net.rosemarythyme.simplymore.util.data;
+
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.Ownable;
+import net.minecraft.entity.damage.DamageSource;
+import net.minecraft.entity.effect.StatusEffect;
+import net.minecraft.entity.effect.StatusEffectInstance;
+import net.minecraft.registry.entry.RegistryEntry;
+import net.minecraft.util.Pair;
+import net.minecraft.util.math.MathHelper;
+import net.minecraft.util.math.Vec3d;
+import net.rosemarythyme.simplymore.util.AttackUtils;
+import net.rosemarythyme.simplymore.util.EntityUtils;
+import net.rosemarythyme.simplymore.util.TargetUtils;
+import net.rosemarythyme.simplymore.world.ActiveAbilityManager;
+import net.rosemarythyme.simplymore.world.abilities.fire.FireTypeAbility;
+
+import java.util.Comparator;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+public record TargetList(Set<LivingEntity> targets) {
+    public TargetList {
+        targets = Set.copyOf(targets);
+    }
+
+    public TargetList(LivingEntity target) {
+        this(Set.of(target));
+    }
+
+    public TargetList filter(Predicate<LivingEntity> predicate) {
+        return new TargetList(targets.stream().filter(predicate).collect(Collectors.toSet()));
+    }
+
+    public TargetList startAbility(ActiveAbilityManager.Type type, int duration) {
+        return this.onEach((target) -> ActiveAbilityManager.SERVER.start(target, type, duration));
+    }
+
+    public Optional<LivingEntity> getAny() {
+        return targets.stream().findAny();
+    }
+
+    public TargetList breakShield() {
+        return this.onEach((target) -> {
+            if(target.isBlocking()) AttackUtils.breakShield(target);
+        });
+    }
+
+    public Optional<Pair<LivingEntity, Float>> getByMax(Function<LivingEntity, Float> function) {
+        return targets.stream().map((livingEntity) -> new Pair<>(livingEntity, function.apply(livingEntity)))
+                .max(Comparator.comparingDouble(Pair::getRight));
+    }
+
+    public Optional<Pair<LivingEntity, Float>> getByMin(Function<LivingEntity, Float> function) {
+        return targets.stream().map((livingEntity) -> new Pair<>(livingEntity, function.apply(livingEntity)))
+                .min(Comparator.comparingDouble(Pair::getRight));
+    }
+
+    public TargetList filterByType(Class<? extends LivingEntity> clazz) {
+        return this.filter(clazz::isInstance);
+    }
+
+    public TargetList filterByOwnedBy(LivingEntity owner) {
+        return this.filter((entity) -> entity instanceof Ownable ownable && ownable.getOwner() == owner);
+    }
+
+    public TargetList kill() {
+        return this.onEach(LivingEntity::kill);
+    }
+
+    public TargetList discard() {
+        return this.onEach(LivingEntity::discard);
+    }
+
+    public boolean isEmpty() {
+        return targets.isEmpty();
+    }
+
+    public int size() {
+        return targets.size();
+    }
+
+    public boolean isPopulated() {
+        return !isEmpty();
+    }
+
+    public TargetList filterByTargetType(LivingEntity attacker, TargetUtils.TargetType targetType) {
+        return this.filter((entity) -> TargetUtils.canTarget(attacker, entity, targetType));
+    }
+
+    public static TargetList empty() {
+        return new TargetList(Set.of());
+    }
+
+    public TargetList include(LivingEntity target) {
+        return include(new TargetList(target));
+    }
+
+    public TargetList exclude(TargetList target) {
+        return this.filter((entity) -> !target.targets.contains(entity));
+    }
+
+    public TargetList exclude(LivingEntity target) {
+        return exclude(new TargetList(target));
+    }
+
+    public TargetList include(Entity target) {
+        if(!(target instanceof LivingEntity livingTarget)) return this;
+        return include(new TargetList(livingTarget));
+    }
+
+    public TargetList include(TargetList list) {
+        return new TargetList(Stream.concat(targets.stream(), list.targets.stream()).collect(Collectors.toSet()));
+    }
+
+    public TargetList applyEffect(RegistryEntry<StatusEffect> effect, int duration, int amplifier) {
+        return this.applyEffect(effect, duration, amplifier, false);
+    }
+
+    public TargetList applyEffect(RegistryEntry<StatusEffect> effect, int duration, int amplifier, boolean hidden) {
+        return this.onEach((target) -> target.addStatusEffect(
+                new StatusEffectInstance(effect, duration, amplifier, hidden, hidden))
+        );
+    }
+
+    public TargetList onEachEffect(Predicate<StatusEffect> predicate, BiConsumer<LivingEntity, StatusEffectInstance> consumer) {
+        return this.onEach((target) -> {
+            List.copyOf(target.getStatusEffects()).stream().filter((effect) -> predicate.test(effect.getEffectType().value()))
+                    .forEach((effect) -> consumer.accept(target, effect));
+        });
+    }
+
+    public TargetList onEachEffect(BiConsumer<LivingEntity, StatusEffectInstance> consumer) {
+        return this.onEachEffect((ignored) -> true, consumer);
+    }
+
+    public TargetList addVelocity(double x, double y, double z) {
+        return this.onEach((target) -> {
+            target.addVelocity(x, y, z);
+            target.velocityModified = true;
+        });
+    }
+
+    public TargetList knockback(LivingEntity attacker, double strength) {
+        return this.onEach((target) -> AttackUtils.knockback(attacker, target, strength));
+    }
+
+    public TargetList knockback(Vec3d pos, double strength) {
+        return this.onEach((target) -> AttackUtils.knockback(pos, target, strength));
+    }
+
+    public TargetList pull(Vec3d pos, double strength) {
+        return this.onEach((target) -> {
+            if(target.getPos().distanceTo(pos) > strength) {
+                target.refreshPositionAfterTeleport(pos.getX(), pos.getY(), pos.getZ());
+                return;
+            }
+
+            AttackUtils.knockback(pos, target, -strength);
+        });
+    }
+
+    public TargetList incrementEffect(RegistryEntry<StatusEffect> effect, int duration, int amplifier, int maxAmplifier) {
+        return this.onEach((entity) -> EntityUtils.reapplyAndIncrementEffect(
+                entity, effect, duration, amplifier, maxAmplifier)
+        );
+    }
+
+    public TargetList applyDurationDependantEffect(RegistryEntry<StatusEffect> effect, int duration, int amplifier) {
+        return this.onEach((entity) -> {
+            if (!entity.hasStatusEffect(effect)) entity.addStatusEffect(new StatusEffectInstance(effect, duration, amplifier));
+        });
+    }
+
+    public TargetList setOnFireFor(float seconds) {
+        return this.onEach((entity) -> entity.setOnFireFor(seconds));
+    }
+
+    public TargetList setOnFireFor(float seconds, ActiveAbilityManager.Type fireType) {
+        if(!(fireType.implementation instanceof FireTypeAbility)) throw new RuntimeException("Ability: " + fireType + " not a fire type");
+
+        int ticks = MathHelper.ceil(seconds * 20f);
+        return this.setOnFireFor(seconds)
+                .startAbility(fireType, ticks + 1);
+    }
+
+    public TargetList damage(float amount, DamageSource source) {
+        return this.onEach((entity -> entity.damage(source, amount)));
+    }
+
+    public TargetList damageWithEnchants(float amount, LivingEntity attacker) {
+        return this.onEach((entity -> AttackUtils.hitWithEnchants(attacker, entity, amount)));
+    }
+
+    public TargetList forceDamageWithEnchants(float amount, LivingEntity attacker) {
+        return this.onEach((entity -> AttackUtils.applyExtraDamageWithEnchants(attacker, entity, amount)));
+    }
+
+    public TargetList forceDamage(float amount, DamageSource source) {
+        return this.onEach((entity -> AttackUtils.applyExtraDamage(entity, amount, source)));
+    }
+
+    public TargetList onEach(Consumer<LivingEntity> action) {
+        targets.forEach(action);
+        return this;
+    }
+
+    public TargetList onFirst(Consumer<LivingEntity> action) {
+        Optional<LivingEntity> entity = targets.stream().findFirst();
+        if(entity.isEmpty()) return this;
+
+        action.accept(entity.get());
+
+        return this;
+    }
+
+    public TargetList onEachEnumerated(BiConsumer<Integer, LivingEntity> action) {
+        List<LivingEntity> targetList = List.copyOf(targets);
+
+        for (int i = 0; i < size(); i++) {
+            action.accept(i, targetList.get(i));
+        }
+
+        return this;
+    }
+
+    public TargetList removeStatusEffects(Predicate<StatusEffect> predicate) {
+        return this.onEach((entity) -> List.copyOf(entity.getStatusEffects()).forEach((effect) -> {
+                    if (predicate.test(effect.getEffectType().value())) {
+                        entity.removeStatusEffect(effect.getEffectType());
+                    }
+                }
+        ));
+    }
+
+    public TargetList addDurationToStatusEffect(Predicate<StatusEffect> predicate, int duration) {
+        return this.onEach((entity) -> List.copyOf(entity.getStatusEffects()).forEach((effect) -> {
+                    if (predicate.test(effect.getEffectType().value())) {
+                        entity.addStatusEffect(new StatusEffectInstance(effect.getEffectType(), effect.getDuration() + duration, effect.getAmplifier()));
+                    }
+                }
+        ));
+    }
+
+    public TargetList removeStatusEffect(RegistryEntry<StatusEffect> effect) {
+        return this.onEach((entity) -> entity.removeStatusEffect(effect));
+    }
+
+    public TargetList removeStatusEffects() {
+        return this.removeStatusEffects((effect) -> true);
+    }
+}

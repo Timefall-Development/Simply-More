@@ -1,0 +1,228 @@
+package net.rosemarythyme.simplymore.registry;
+
+import dev.architectury.registry.level.entity.EntityAttributeRegistry;
+import dev.architectury.registry.registries.DeferredRegister;
+import dev.architectury.registry.registries.RegistrySupplier;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityType;
+import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.SpawnGroup;
+import net.minecraft.registry.RegistryKeys;
+import net.minecraft.util.Identifier;
+import net.rosemarythyme.simplymore.SimplyMore;
+import net.rosemarythyme.simplymore.entity.*;
+import net.rosemarythyme.simplymore.entity.legacy.*;
+import net.rosemarythyme.simplymore.entity.projectiles.*;
+
+import java.util.ArrayList;
+import java.util.List;
+
+public class EntityRegistry {
+    private static final List<RegistrySupplier<? extends EntityType<? extends AbstractAbilityPlacementEntity>>> MARKERS = new ArrayList<>();
+
+    public static final DeferredRegister<EntityType<?>> ENTITIES =
+            DeferredRegister.create(SimplyMore.ID, RegistryKeys.ENTITY_TYPE);
+
+    public static final RegistrySupplier<EntityType<CrowEntity>> CROW = registerType(
+            EntityType.Builder.<CrowEntity>create(CrowEntity::new, SpawnGroup.MISC)
+                    .dimensions(0.25f, 0.25f)
+                    .makeFireImmune()
+                    .disableSummon(),
+            "crow"
+    );
+
+    public static final RegistrySupplier<EntityType<CrowEmitterEntity>> CROW_EMITTER =
+            registerMarkerEntity("crow_emitter", CrowEmitterEntity::new);
+
+    public static final RegistrySupplier<EntityType<CrowProjectileEntity>> CROW_PROJECTILE = registerType(
+            EntityType.Builder.<CrowProjectileEntity>create(CrowProjectileEntity::new, SpawnGroup.MISC)
+                    .dimensions(8/16f, 8/16f)
+                    .makeFireImmune()
+                    .eyeHeight(0.13F)
+                    .maxTrackingRange(4)
+                    .trackingTickInterval(1)
+                    .disableSummon(),
+            "crow_projectile"
+    );
+
+    public static final RegistrySupplier<EntityType<CannonballEntity>> CANNONBALL = registerType(
+            EntityType.Builder.<CannonballEntity>create(CannonballEntity::new, SpawnGroup.MISC)
+                    .dimensions(10/16f, 10/16f)
+                    .makeFireImmune()
+                    .eyeHeight(0.13F)
+                    .maxTrackingRange(4)
+                    .trackingTickInterval(1)
+                    .disableSummon(),
+            "cannonball"
+    );
+
+    public static final RegistrySupplier<EntityType<AntimatterParticleEntity>> ANTIMATTER_PARTICLE = registerType(
+            EntityType.Builder.<AntimatterParticleEntity>create(AntimatterParticleEntity::new, SpawnGroup.MISC)
+                    .dimensions(4/16f, 4/16f)
+                    .makeFireImmune()
+                    .eyeHeight(0F)
+                    .maxTrackingRange(6)
+                    .trackingTickInterval(1)
+                    .disableSummon(),
+            "antimatter"
+    );
+
+    public static final RegistrySupplier<EntityType<GhostFallingBlockEntity>> GHOST_FALLING_BLOCK = registerType(
+            EntityType.Builder.<GhostFallingBlockEntity>create(GhostFallingBlockEntity::new, SpawnGroup.MISC)
+                    .dimensions(1f, 1f),
+            "ghost_falling_block"
+    );
+
+    public static final RegistrySupplier<EntityType<GreatSlitherFangEntity>> GREAT_SLITHER_FANG = registerType(
+            EntityType.Builder.<GreatSlitherFangEntity>create(GreatSlitherFangEntity::new, SpawnGroup.MISC)
+                    .dimensions(1f, 1f),
+            "great_slither_fang"
+    );
+
+    public static final RegistrySupplier<EntityType<VolcanicVentEntity>> VOLCANIC_VENT =
+            registerMarkerEntity("volcanic_vent", VolcanicVentEntity::new, 10/16f, 5/16f);
+
+    public static final RegistrySupplier<EntityType<IcewallEntity>> ICEWALL =
+            registerMarkerEntity("icewall", IcewallEntity::new, 2f, (42/16f) * 2);
+
+    public static final RegistrySupplier<EntityType<LightbeamEntity>> LIGHTBEAM =
+            registerMarkerEntity("lightbeam", LightbeamEntity::new, 1f, 60f);
+
+    public static final RegistrySupplier<EntityType<BlizzardEntity>> BLIZZARD =
+            registerMarkerEntity("blizzard", BlizzardEntity::new);
+
+    public static final RegistrySupplier<EntityType<PlanetaryBurstEntity>> PLANETARY_BURST =
+            registerMarkerEntity("planet_burst", PlanetaryBurstEntity::new);
+
+    public static final RegistrySupplier<EntityType<LavaLiquidEntity>> LAVA =
+            registerMarkerEntity("lava", LavaLiquidEntity::new, 1f, 1f);
+
+    public static final RegistrySupplier<EntityType<WaterLiquidEntity>> WATER =
+            registerMarkerEntity("water", WaterLiquidEntity::new, 1f, 1f);
+
+    public static final RegistrySupplier<EntityType<EruptionEntity>> ERUPTION =
+            registerMarkerEntity("eruption", EruptionEntity::new);
+
+    public static final RegistrySupplier<EntityType<SoulFragmentEntity>> SOUL_FRAGMENT =
+            registerMarkerEntity("soul_fragment", SoulFragmentEntity::new, 0.25f, 0.25f);
+
+    public static final RegistrySupplier<EntityType<LightningPointEntity>> LIGHTNING_POINT =
+            registerMarkerEntity("lightning_point", LightningPointEntity::new, 0.25f, 0.25f);
+
+    public static final RegistrySupplier<EntityType<EarthquakeVisualEntity>> EARTHQUAKE =
+            registerMarkerEntity("earthquake", EarthquakeVisualEntity::new, 0.25f, 0.25f);
+
+    public static final RegistrySupplier<EntityType<LightOrbEntity>> LIGHT_ORB =
+            registerMarkerEntity("light_orb", LightOrbEntity::new, 0.25f, 0.25f);
+
+    public static final RegistrySupplier<EntityType<StatueEntity>> STATUE =
+            registerMarkerEntity("statue", StatueEntity::new, 1f, 2f);
+
+    public static final RegistrySupplier<EntityType<SpiritualGuardianEntity>> SPIRITUAL_GUARDIAN = registerType(
+            EntityType.Builder.<SpiritualGuardianEntity>create(SpiritualGuardianEntity::new, SpawnGroup.MISC)
+                    .dimensions(1f, 2f)
+                    .makeFireImmune()
+                    .maxTrackingRange(4)
+                    .trackingTickInterval(1)
+                    .disableSummon(),
+            "spiritual_guardian"
+    );
+
+    public static final RegistrySupplier<EntityType<MimicryVisualEntity>> MIMICRY_VISUAL =
+            registerMarkerEntity("mimicry_visual", MimicryVisualEntity::new, 0.25f, 0.25f);
+
+    public static final RegistrySupplier<EntityType<SunEntity>> SUN =
+            registerMarkerEntity("sun", SunEntity::new, 14 / 16f, 14 / 16f);
+
+    public static final RegistrySupplier<EntityType<MoonEntity>> MOON =
+            registerMarkerEntity("moon", MoonEntity::new, 14 / 16f, 14 / 16f);
+
+    public static final RegistrySupplier<EntityType<SpiritualTormentorEntity>> SPIRITUAL_TORMENTOR = registerType(
+            EntityType.Builder.<SpiritualTormentorEntity>create(SpiritualTormentorEntity::new, SpawnGroup.MISC)
+                    .dimensions(1f, 2f)
+                    .makeFireImmune()
+                    .maxTrackingRange(4)
+                    .trackingTickInterval(1)
+                    .disableSummon(),
+            "spiritual_tormentor"
+    );
+
+    public static final RegistrySupplier<EntityType<DugBlockEntity>> DUG_BLOCK = registerType(
+            EntityType.Builder.<DugBlockEntity>create(DugBlockEntity::new, SpawnGroup.MISC)
+                    .dimensions(1f, 1f)
+                    .makeFireImmune()
+                    .eyeHeight(0.13F)
+                    .maxTrackingRange(4)
+                    .trackingTickInterval(1)
+                    .disableSummon(),
+            "dug_block"
+    );
+
+    public static final RegistrySupplier<EntityType<DripstoneSpikeEntity>> DRIPSTONE_SPIKE = registerType(
+            EntityType.Builder.<DripstoneSpikeEntity>create(DripstoneSpikeEntity::new, SpawnGroup.MISC)
+                    .dimensions(0.25f, 0.25f)
+                    .makeFireImmune()
+                    .eyeHeight(0.13F)
+                    .maxTrackingRange(4)
+                    .trackingTickInterval(1)
+                    .disableSummon(),
+            "dripstone_spike"
+    );
+
+    public static final RegistrySupplier<EntityType<IceSpikeEntity>> ICE_SPIKE = registerType(
+            EntityType.Builder.<IceSpikeEntity>create(IceSpikeEntity::new, SpawnGroup.MISC)
+                    .dimensions(0.25f, 0.25f)
+                    .makeFireImmune()
+                    .eyeHeight(0.13F)
+                    .maxTrackingRange(4)
+                    .trackingTickInterval(1)
+                    .disableSummon(),
+            "ice_spike"
+    );
+
+
+    public static final RegistrySupplier<EntityType<FallingDripstoneSpikeEntity>> FALLING_DRIPSTONE_SPIKE = registerType(
+            EntityType.Builder.<FallingDripstoneSpikeEntity>create(FallingDripstoneSpikeEntity::new, SpawnGroup.MISC)
+                    .dimensions(0.25f, 0.25f)
+                    .makeFireImmune()
+                    .eyeHeight(0.13F)
+                    .maxTrackingRange(4)
+                    .trackingTickInterval(1)
+                    .disableSummon(),
+            "falling_dripstone_spike"
+    );
+
+    public static final RegistrySupplier<EntityType<RiftEntity>> RIFT =
+            registerMarkerEntity("rift", RiftEntity::new);
+
+    public static <T extends Entity> RegistrySupplier<EntityType<T>> registerType(EntityType.Builder<T> builder, String name) {
+        Identifier id = SimplyMore.identifier(name);
+        return ENTITIES.register(id, () -> builder.build(id.toString()));
+    }
+
+    public static <T extends AbstractAbilityPlacementEntity> RegistrySupplier<EntityType<T>> registerMarkerEntity(String name, EntityType.EntityFactory<T> entity) {
+        return registerMarkerEntity(name, entity, 0, 0);
+    }
+
+    public static <T extends AbstractAbilityPlacementEntity> RegistrySupplier<EntityType<T>> registerMarkerEntity(String name, EntityType.EntityFactory<T> entity, float width, float height) {
+        EntityType.Builder<T> type = EntityType.Builder.create(entity, SpawnGroup.MISC)
+                .dimensions(width, height)
+                .disableSummon();
+
+        RegistrySupplier<EntityType<T>> supplier = registerType(width == 0 || height  == 0 ? type.maxTrackingRange(0) : type, name);
+
+        MARKERS.add(supplier);
+        return supplier;
+    }
+
+    public static void register() {
+        ENTITIES.register();
+        EntityAttributeRegistry.register(CROW, CrowEntity::createMobAttributes);
+        EntityAttributeRegistry.register(SPIRITUAL_GUARDIAN, AbstractSpiritualEntity::createMobAttributes);
+        EntityAttributeRegistry.register(SPIRITUAL_TORMENTOR, AbstractSpiritualEntity::createMobAttributes);
+
+        for(var marker : MARKERS) {
+            EntityAttributeRegistry.register(marker, LivingEntity::createLivingAttributes);
+        }
+    }
+}

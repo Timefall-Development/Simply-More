@@ -1,0 +1,12 @@
+{
+  "coins": {
+    "sounds": [
+      "simplymore:coins"
+    ]
+  },
+  "summon_guardian": {
+    "sounds": [
+      "simplymore:summon_guardian"
+    ]
+  }
+}

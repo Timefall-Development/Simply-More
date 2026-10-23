@@ -1,11 +1,19 @@
 {
 	"values": [
 		{
-			"id": "simplymore:soul_foreseer",
+			"id": "simplymore:soulfracture",
 			"required": false
 		},
 		{
 			"id": "simplyswords:flamewind",
+			"required": false
+		},
+		{
+			"id": "simplyswords:stormscale",
+			"required": false
+		},
+		{
+			"id": "simplyswords:ionbound_stormscale",
 			"required": false
 		},
 		{

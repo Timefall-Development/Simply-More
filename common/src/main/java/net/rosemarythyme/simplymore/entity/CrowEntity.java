@@ -1,278 +1,194 @@
 package net.rosemarythyme.simplymore.entity;
 
-import net.minecraft.block.BlockState;
 import net.minecraft.command.argument.EntityAnchorArgumentType;
 import net.minecraft.entity.AnimationState;
+import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.Ownable;
 import net.minecraft.entity.ai.control.FlightMoveControl;
-import net.minecraft.entity.ai.goal.FollowOwnerGoal;
-import net.minecraft.entity.ai.goal.LookAtEntityGoal;
-import net.minecraft.entity.ai.goal.SitGoal;
 import net.minecraft.entity.ai.pathing.BirdNavigation;
 import net.minecraft.entity.ai.pathing.EntityNavigation;
 import net.minecraft.entity.attribute.DefaultAttributeContainer;
 import net.minecraft.entity.attribute.EntityAttributes;
-import net.minecraft.entity.damage.DamageSource;
 import net.minecraft.entity.data.DataTracker;
 import net.minecraft.entity.data.TrackedData;
 import net.minecraft.entity.data.TrackedDataHandlerRegistry;
-import net.minecraft.entity.effect.StatusEffectInstance;
-import net.minecraft.entity.effect.StatusEffects;
 import net.minecraft.entity.mob.MobEntity;
-import net.minecraft.entity.passive.PassiveEntity;
-import net.minecraft.entity.passive.TameableEntity;
 import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NbtCompound;
-import net.minecraft.particle.DustParticleEffect;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.sound.SoundCategory;
-import net.minecraft.sound.SoundEvent;
 import net.minecraft.sound.SoundEvents;
-import net.minecraft.util.Hand;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
-import net.rosemarythyme.simplymore.config.ConfigWrapper;
-import net.rosemarythyme.simplymore.config.UniqueEffectConfig;
+import net.rosemarythyme.simplymore.entity.ai.CrowFollowOwnerGoal;
+import net.rosemarythyme.simplymore.entity.ai.CrowLookAtEntityGoal;
 import net.rosemarythyme.simplymore.item.uniques.DeathsEyrieItem;
-import net.rosemarythyme.simplymore.registry.ModEffectsRegistry;
-import net.rosemarythyme.simplymore.registry.ModItemsRegistry;
-import org.jetbrains.annotations.Nullable;
-import org.joml.Vector3f;
+import net.rosemarythyme.simplymore.registry.EntityRegistry;
+import net.rosemarythyme.simplymore.registry.StatusEffectRegistry;
+import net.rosemarythyme.simplymore.registry.item.ItemRegistry;
+import net.rosemarythyme.simplymore.util.*;
+import net.rosemarythyme.simplymore.util.data.Sound;
+import net.rosemarythyme.simplymore.util.data.TargetList;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.UUID;
 
-public class CrowEntity extends TameableEntity implements Ownable {
-    protected static final TrackedData<Optional<UUID>> ATTACKING_UUID = DataTracker.registerData(CrowEntity.class, TrackedDataHandlerRegistry.OPTIONAL_UUID);
+public class CrowEntity extends AbstractPetAbility implements EnumeratedEntity {
+    private static final int ATTACK_DURATION = 6;
+    protected static final TrackedData<Optional<UUID>> ATTACKING = DataTracker.registerData(CrowEntity.class, TrackedDataHandlerRegistry.OPTIONAL_UUID);
     protected static final TrackedData<OptionalInt> ATTACKING_TIME = DataTracker.registerData(CrowEntity.class, TrackedDataHandlerRegistry.OPTIONAL_INT);
-    private PlayerEntity owner;
-    public final AnimationState flapAnimationState = new AnimationState();
+    protected static final TrackedData<Integer> ORDINAL = DataTracker.registerData(CrowEntity.class, TrackedDataHandlerRegistry.INTEGER);
 
-    protected static UniqueEffectConfig effect = ConfigWrapper.unique;
+    public final AnimationState flapAnim = new AnimationState();
 
-    @Override
-    protected void initGoals() {
-        this.goalSelector.add(1, new FollowOwnerGoal(this, 1.0, 3.0F, 1F));
-        this.goalSelector.add(2, new LookAtEntityGoal(this, PlayerEntity.class, 8.0F));
-        this.goalSelector.add(2, new SitGoal(this));
-    }
-
-    @Override
-    protected void initDataTracker(DataTracker.Builder builder) {
-        super.initDataTracker(builder);
-        builder.add(ATTACKING_UUID, Optional.empty());
-        builder.add(ATTACKING_TIME, OptionalInt.of(0));
-    }
-
-
-    public CrowEntity(EntityType<? extends TameableEntity> entityType, World world) {
+    public CrowEntity(EntityType<CrowEntity> entityType, World world) {
         super(entityType, world);
         this.moveControl = new FlightMoveControl(this, 15, false);
     }
 
-    @Override
-    protected @Nullable SoundEvent getDeathSound() {
-        return null;
+    @SuppressWarnings("unused") // used via recursion in `AttackUtils#ensureEnumeratedEntities`
+    public CrowEntity(@NotNull LivingEntity owner, int ordinal) {
+        super(owner, getOriginPoint(owner), EntityRegistry.CROW.get());
+        this.moveControl = new FlightMoveControl(this, 15, false);
+        this.setOrdinal(ordinal);
     }
 
-    public @Nullable UUID getAttackingUuid() {
-        if(this.getDataTracker().get(ATTACKING_UUID).isPresent()) {
-            return this.getDataTracker().get(ATTACKING_UUID).get();
-        }
-
-        return null;
+    public boolean isAttacking() {
+        return this.dataTracker.get(ATTACKING).isPresent() && this.dataTracker.get(ATTACKING_TIME).orElse(0) <= ATTACK_DURATION;
     }
 
-    public int getAttackingTime() {
-        if(this.getDataTracker().get(ATTACKING_TIME).isPresent()) {
-            return this.getDataTracker().get(ATTACKING_TIME).getAsInt();
-        }
-
-        return 0;
-    }
-
-    public void setAttackingTime(int value) {
-        this.getDataTracker().set(ATTACKING_TIME, OptionalInt.of(value), true);
-    }
-
-    public void setAttackingUuid(UUID value) {
-        this.getDataTracker().set(ATTACKING_UUID, Optional.of(value), true);
+    private static Vec3d getOriginPoint(LivingEntity owner) {
+        Vec3d pos = owner.getPos().offset(Direction.UP, 3.5f);
+        return EntityUtils.rangeAroundPoint(pos, owner, owner.getYaw() + 180f, 1.25f);
     }
 
     @Override
-    public void tick() {
-        super.tick();
+    public void serverTick(LivingEntity owner) {
+        if(!InventoryUtils.isHoldingAwakenedStack(owner, ItemRegistry.DEATHS_EYRIE.get())) {
+            discard();
+            return;
+        }
 
-        // Checking if owner is still wielding the weapon
-        PlayerEntity player = (PlayerEntity) this.getOwner();
-        if (player != null) {
-            if (player.getItemCooldownManager().isCoolingDown(ModItemsRegistry.DEATHS_EYRIE.get())) {
-                if(this.getAttackingTime() >= -1) {
-                    this.setNoGravity(true);
-                    this.setNoDrag(true);
-                    this.goalSelector.getGoals().clear();
-                    this.targetSelector.getGoals().clear();
+        if(age == 1) {
+            AudioVisualUtils.playSound(this.getWorld(), this.getPos(), new Sound(SoundEvents.ENTITY_PARROT_IMITATE_PHANTOM).setPitch(0.6f));
+        }
 
-                    int time = this.getAttackingTime();
-                    this.setAttackingTime(time - 1);
+        OptionalInt duration = this.getDataTracker().get(ATTACKING_TIME);
+        LivingEntity entity = TargetUtils.getEntityByUUID(owner, this.getDataTracker().get(ATTACKING).orElse(null));
+        if(duration.isPresent() && entity != null) {
+            tickAttack(entity, duration.getAsInt());
+        }
+    }
 
-                    // Attack
-                    LivingEntity target = (LivingEntity) ((ServerWorld) this.getWorld()).getEntity(this.getAttackingUuid());
+    private void tickAttack(LivingEntity target, int time) {
+        if(!target.isAlive()) {
+            stopAttack();
+            return;
+        }
 
-                    if(target == null || target.isDead()) {
-                        this.kill();
-                        return;
-                    }
+        if(target.getPos().distanceTo(this.getPos()) > 10f) {
+            stopAttack();
+            return;
+        }
 
-                    if (time % 10 == 0) {
+        if(isAttacking()) {
+            this.lookAt(EntityAnchorArgumentType.EntityAnchor.EYES, target.getPos().offset(Direction.UP, 1f));
 
-                        float dX = this.getRandom().nextBetween(-10,10) / 10f;
-                        float dY = this.getRandom().nextBetween(-10,10) / 10f;
-                        float dZ = this.getRandom().nextBetween(-10,10) / 10f;
+            Vec3d velocity = MathUtils.getDirectionalVector(this.getYaw(), this.getPitch()).multiply(1.25f);
+            this.setVelocity(velocity);
+        }
 
-                        this.teleportWithParticles(
-                                target.getX() + dX,
-                                target.getEyeY() + 1 + dY,
-                                target.getZ() + dZ
-                        );
-
-                        this.lookAt(EntityAnchorArgumentType.EntityAnchor.EYES, target.getEyePos());
-                        this.removeStatusEffect(StatusEffects.INVISIBILITY);
-                        this.setVelocity(new Vec3d(dX * -0.5d, (dY+1.25) * -0.5d, dZ * -0.5d));
-                    } else if(time % 10 == 5) {
-                        double originalResistance = target.getAttributeValue(EntityAttributes.GENERIC_KNOCKBACK_RESISTANCE);
-                        if (target.getAttributeInstance(EntityAttributes.GENERIC_KNOCKBACK_RESISTANCE) != null) {
-                            target.getAttributeInstance(EntityAttributes.GENERIC_KNOCKBACK_RESISTANCE)
-                                    .setBaseValue(1.0);
-                        }
-
-                        target.damage(this.owner.getDamageSources().playerAttack(this.owner), effect.deaths_eyrie.crowDamage);
-                        this.addStatusEffect(new StatusEffectInstance(StatusEffects.INVISIBILITY, 10,0, true, false));
-                        this.owner.heal(effect.deaths_eyrie.deathsEyrieCrowAttackHeal);
-                        target.addStatusEffect(new StatusEffectInstance(StatusEffects.BLINDNESS,effect.deaths_eyrie.crowBlindTime));
-                        target.addStatusEffect(new StatusEffectInstance(ModEffectsRegistry.getReference(ModEffectsRegistry.BLEED),effect.deaths_eyrie.crowBleedTime));
-
-                        if (target.getAttributeInstance(EntityAttributes.GENERIC_KNOCKBACK_RESISTANCE) != null) {
-                            target.getAttributeInstance(EntityAttributes.GENERIC_KNOCKBACK_RESISTANCE)
-                                    .setBaseValue(originalResistance);
-                        }
-                    }
-                } else {
-                    this.kill();
-                }
-            } else {
-                if (player.isDead()
-                        || player.getWorld().getDimension() != this.getWorld().getDimension()
-                        || !(player.getStackInHand(Hand.MAIN_HAND).getItem() instanceof DeathsEyrieItem)
-                ) {
-                    this.kill();
-                }
-            }
+        if(--time >= 0) {
+            this.dataTracker.set(ATTACKING_TIME, OptionalInt.of(time));
         } else {
-            this.kill();
+            new TargetList(target).forceDamage(DeathsEyrieItem.SETTINGS.crowDamage, this.getDamageSources().mobAttack(this))
+                    .applyEffect(StatusEffectRegistry.getReference(StatusEffectRegistry.WOUNDED), DeathsEyrieItem.SETTINGS.woundedDuration * getOrdinal(), 0);
+
+            stopAttack();
+        }
+    }
+
+    private void stopAttack() {
+        this.dataTracker.set(ATTACKING_TIME, OptionalInt.empty());
+        this.dataTracker.set(ATTACKING, Optional.empty());
+        this.setVelocity(Vec3d.ZERO);
+
+        LivingEntity owner = getOwner();
+        if(owner != null) {
+            Vec3d pos = getOriginPoint(owner);
+            this.refreshPositionAfterTeleport(pos);
         }
 
-        // Flap Animation whilst flying
+        AudioVisualUtils.playSound(this.getWorld(), this.getPos(), new Sound(SoundEvents.ENTITY_PARROT_IMITATE_PHANTOM).setPitch(0.6f));
+    }
+
+    @Override
+    public void pushAwayFrom(Entity entity) {
+        if(isAttacking()) return;
+        super.pushAwayFrom(entity);
+    }
+
+    @Override
+    protected void pushAway(Entity entity) {
+        if(isAttacking()) return;
+        super.pushAway(entity);
+    }
+
+    public void startAttack(LivingEntity target) {
+        if(isAttacking()) return;
+
+        this.dataTracker.set(ATTACKING, Optional.of(target.getUuid()));
+        this.dataTracker.set(ATTACKING_TIME, OptionalInt.of(ATTACK_DURATION + getOrdinal() - 1));
+
+        Vec3d pos = EntityUtils.rangeAroundPoint(target.getPos().offset(Direction.UP, 2.5f), this, this.getRandom().nextFloat() * 360f, 3f);
+        this.setPosition(pos);
+
+        AudioVisualUtils.playSound(this.getWorld(), this.getPos(), new Sound(SoundEvents.ENTITY_PARROT_IMITATE_PHANTOM).setPitch(0.6f));
+    }
+
+    @Override
+    public void animate() {
         if(this.getWorld().isClient() && !isOnGround()) {
-            if(this.age % 3 == 0) {
-                this.flapAnimationState.start(this.age);
+            if(this.age % 5 == 0) {
+                this.flapAnim.start(this.age);
             }
         }
     }
 
+    @Override
+    public boolean hasNoGravity() {
+        return super.hasNoGravity() || isAttacking();
+    }
 
     public void writeCustomDataToNbt(NbtCompound nbt) {
         super.writeCustomDataToNbt(nbt);
-        if (this.dataTracker.get(ATTACKING_UUID).isPresent()) {
-            nbt.putUuid("AttackingUUID", this.dataTracker.get(ATTACKING_UUID).get());
-        }
+        writeEnumeratedCustomDataToNbt(nbt);
 
-        if (this.dataTracker.get(ATTACKING_TIME).isPresent()) {
-            nbt.putInt("AttackingTime", this.dataTracker.get(ATTACKING_TIME).getAsInt());
-        }
-    }
-
-    @Override
-    public void readCustomDataFromNbt(NbtCompound nbt) {
-        super.readCustomDataFromNbt(nbt);
-        if (nbt.containsUuid("AttackingUUID")) {
-            this.dataTracker.set(ATTACKING_UUID, Optional.of(nbt.getUuid("AttackingUUID")));
+        if(nbt.containsUuid("attacking")) {
+            this.dataTracker.set(ATTACKING, Optional.of(nbt.getUuid("attacking")));
         } else {
-            this.dataTracker.set(ATTACKING_UUID, Optional.empty());
+            this.dataTracker.set(ATTACKING, Optional.empty());
         }
 
-        if (nbt.contains("AttackingTime")) {
-            this.dataTracker.set(ATTACKING_TIME, OptionalInt.of(nbt.getInt("AttackingTime")));
+        if(nbt.contains("attacking_time")) {
+            this.dataTracker.set(ATTACKING_TIME, OptionalInt.of(nbt.getInt("attacking_time")));
         } else {
             this.dataTracker.set(ATTACKING_TIME, OptionalInt.empty());
         }
     }
 
     @Override
-    public boolean isBreedingItem(ItemStack stack) {
-        return false;
-    }
+    public void readCustomDataFromNbt(NbtCompound nbt) {
+        super.readCustomDataFromNbt(nbt);
+        readEnumeratedCustomDataFromNbt(nbt);
 
-    public void teleportWithParticles(double x,double y, double z) {
-        teleport(x, y, z, false);
+        Optional<UUID> attacking = this.dataTracker.get(ATTACKING);
+        attacking.ifPresent((uuid) -> nbt.putUuid("attacking", uuid));
 
-        this.getWorld().playSound(
-                null,
-                x,
-                y,
-                z,
-                SoundEvents.ENTITY_PARROT_IMITATE_PHANTOM,
-                SoundCategory.NEUTRAL,
-                1f,
-                0.6f
-        );
-
-
-        ((ServerWorld) this.getWorld()).spawnParticles(
-                new DustParticleEffect(new Vector3f(0f, 0f, 0.2f), 1f),
-                x,
-                y,
-                z,
-                5,
-                0.2f,0.2f,0.2f,
-                0
-        );
-    }
-
-    @Override
-    public void onDeath(DamageSource damageSource) {
-        this.getWorld().playSound(
-                null,
-                this.getX(),
-                this.getY(),
-                this.getZ(),
-                SoundEvents.ENTITY_PARROT_IMITATE_PHANTOM,
-                SoundCategory.NEUTRAL,
-                1f,
-                0.6f
-        );
-
-
-        ((ServerWorld) this.getWorld()).spawnParticles(
-                new DustParticleEffect(new Vector3f(0f, 0f, 0.2f), 3f),
-                this.getX(),
-                this.getY()+0.25f,
-                this.getZ(),
-                5,
-                0.2f,0.2f,0.2f,
-                0
-        );
-
-        this.remove(RemovalReason.KILLED);
-    }
-
-    @Override
-    protected void fall(double heightDifference, boolean onGround, BlockState state, BlockPos landedPosition) {
+        OptionalInt time = this.dataTracker.get(ATTACKING_TIME);
+        time.ifPresent((uuid) -> nbt.putInt("attacking_time", uuid));
     }
 
     public static DefaultAttributeContainer.Builder createMobAttributes() {
@@ -281,28 +197,6 @@ public class CrowEntity extends TameableEntity implements Ownable {
                 .add(EntityAttributes.GENERIC_FLYING_SPEED, 0.8F)
                 .add(EntityAttributes.GENERIC_MOVEMENT_SPEED, 0.2F);
     }
-
-    @Override
-    public boolean damage(DamageSource source, float amount) {
-        if (source != this.getDamageSources().genericKill()) return false;
-        return super.damage(source, amount);
-    }
-
-    @Override
-    public boolean canHit() {
-        return false;
-    }
-
-    @Override
-    public @Nullable PassiveEntity createChild(ServerWorld world, PassiveEntity entity) {
-        return null;
-    }
-
-    @Override
-    public LivingEntity getOwner() {
-        return this.owner;
-    }
-
 
     @Override
     protected EntityNavigation createNavigation(World world) {
@@ -314,8 +208,30 @@ public class CrowEntity extends TameableEntity implements Ownable {
     }
 
     @Override
-    public void setOwner(PlayerEntity player) {
-        this.owner = player;
+    public TrackedData<Integer> getDataType() {
+        return ORDINAL;
     }
 
+    @Override
+    public boolean shouldEnumerate() {
+        return true;
+    }
+
+    @Override
+    public DataTracker getDataTrackerBridge() {return this.getDataTracker();}
+
+    @Override
+    protected void initGoals() {
+        this.goalSelector.add(1, new CrowFollowOwnerGoal(this, 1.0, 3.0F, 1F));
+        this.goalSelector.add(2, new CrowLookAtEntityGoal(this, PlayerEntity.class, 8.0F));
+    }
+
+    @Override
+    protected void initDataTracker(DataTracker.Builder builder) {
+        super.initDataTracker(builder);
+        initEnumeratedDataTracker(builder);
+
+        builder.add(ATTACKING, Optional.empty());
+        builder.add(ATTACKING_TIME, OptionalInt.empty());
+    }
 }

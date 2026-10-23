@@ -3,74 +3,61 @@ package net.rosemarythyme.simplymore.item.uniques.mimicry;
 import me.fzzyhmstrs.fzzy_config.validation.number.ValidatedFloat;
 import me.fzzyhmstrs.fzzy_config.validation.number.ValidatedInt;
 import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.effect.StatusEffectInstance;
 import net.minecraft.entity.effect.StatusEffects;
-import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ToolMaterial;
 import net.minecraft.text.Text;
-import net.rosemarythyme.simplymore.item.uniques.MimicryItem;
-import net.rosemarythyme.simplymore.registry.ModEffectsRegistry;
-import net.rosemarythyme.simplymore.registry.ModItemsRegistry;
+import net.rosemarythyme.simplymore.entity.MimicryVisualEntity;
+import net.rosemarythyme.simplymore.registry.item.ItemRegistry;
+import net.rosemarythyme.simplymore.util.MimicryTimelineUtils;
+import net.rosemarythyme.simplymore.util.PredicateUtils;
+import net.rosemarythyme.simplymore.util.data.TargetList;
 import net.sweenus.simplyswords.config.settings.ItemStackTooltipAppender;
 import net.sweenus.simplyswords.config.settings.TooltipSettings;
+import net.sweenus.simplyswords.util.Styles;
 
 import java.util.List;
 
 public class KhopeshItem extends MimicryItem {
-    public KhopeshItem(ToolMaterial toolMaterial, int attackDamage, float attackSpeed, Settings settings) {
-        super(toolMaterial, attackDamage, attackSpeed, SwordTypes.SWORD, settings);
+    public KhopeshItem(ToolMaterial toolMaterial, int attackDamage, float attackSpeed) {
+        super(toolMaterial, attackDamage, attackSpeed);
     }
 
     @Override
-    public void usageTimeline(PlayerEntity player, int ticksUsed) {
+    public boolean usageTimeline(LivingEntity entity, int ticksUsed) {
         if(ticksUsed == 3) {
-            jump(player, 2.6f, 0.4f);
+            MimicryTimelineUtils.move(entity, 2.6f, 0.4f);
+        }
+
+        if(ticksUsed == 12) {
+            MimicryTimelineUtils.startAnimation(entity, 6, MimicryVisualEntity.Animation.SWING);
         }
 
         if(ticksUsed == 14) {
-            List<LivingEntity> enemies = sweepAttack(player, 1.2f);
-            float damage = mimicry.khopesh.damage;
-            enemies.forEach(
-                    target -> {
-                        if(target.isBlocking()) return;
-                        target.damage(player.getDamageSources().playerAttack(player), damage);
-                        player.addStatusEffect(
-                                new StatusEffectInstance(
-                                        StatusEffects.SPEED,
-                                        mimicry.khopesh.effectTime,
-                                        2
-                                )
-                        );
-                    }
-            );
+            TargetList targets = MimicryTimelineUtils.sweepAttack(entity, 1.2f)
+                    .filter(PredicateUtils.IS_NOT_BLOCKING)
+                    .damageWithEnchants(MIMICRY_CONFIG.khopesh.damage, entity);
+
+            if(targets.isPopulated()) {
+                new TargetList(entity).applyEffect(StatusEffects.SPEED, MIMICRY_CONFIG.khopesh.effectTime, 2);
+            }
         }
 
-
-
-        if(ticksUsed >= 20) {
-            player.removeStatusEffect(ModEffectsRegistry.getReference(ModEffectsRegistry.MIMICRY_HAPPENING));
-        }
+        return ticksUsed >= 20;
     }
 
     @Override
     public boolean isFormDisabledInConfig() {
-        return mimicry.khopesh.disabled;
-    }
-
-    @Override
-    public Text getMimicryFormName() {
-        return Text.translatable("item.simplymore.mimicry.khopesh");
+        return MIMICRY_CONFIG.khopesh.disabled;
     }
 
     @Override
     public void appendSpecificTooltip(List<Text> tooltip) {
-        tooltip.add(Text.translatable("item.simplymore.mimicry.khopesh.tooltip1").setStyle(textStyle));
-        tooltip.add(Text.translatable("item.simplymore.mimicry.khopesh.tooltip2").setStyle(textStyle));
+        tooltip.add(Text.translatable("item.simplymore.mimicry.khopesh.tooltip1").setStyle(Styles.TEXT));
     }
 
     public static class MimicryEffectSettings extends TooltipSettings {
         public MimicryEffectSettings() {
-            super(new ItemStackTooltipAppender(ModItemsRegistry.MIMICRY_KHOPESH));
+            super(new ItemStackTooltipAppender(ItemRegistry.MIMICRY_KHOPESH));
         }
 
         public boolean disabled = false;

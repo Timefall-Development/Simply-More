@@ -1,40 +1,92 @@
 package net.rosemarythyme.simplymore;
 
-import dev.architectury.event.events.common.PlayerEvent;
+import dev.architectury.event.events.client.ClientLifecycleEvent;
+import dev.architectury.event.events.client.ClientTickEvent;
+import dev.architectury.event.events.common.LifecycleEvent;
+import dev.architectury.event.events.common.TickEvent;
 import dev.architectury.utils.Env;
 import dev.architectury.utils.EnvExecutor;
-import net.rosemarythyme.simplymore.client.SimplyMoreClientInit;
+import net.fabricmc.api.EnvType;
+import net.fabricmc.api.Environment;
+import net.minecraft.util.Identifier;
+import net.rosemarythyme.simplymore.client.registry.HudOverlayItemRegistry;
+import net.rosemarythyme.simplymore.client.registry.ClientEntityRendererRegistry;
+import net.rosemarythyme.simplymore.client.registry.ClientItemPropertyRegistry;
+import net.rosemarythyme.simplymore.client.registry.ClientTooltipRegistry;
 import net.rosemarythyme.simplymore.config.ConfigWrapper;
-import net.rosemarythyme.simplymore.event.RemoveStatusOnJoin;
+import net.rosemarythyme.simplymore.event.TickClientEffects;
+import net.rosemarythyme.simplymore.event.TickServerEffects;
+import net.rosemarythyme.simplymore.item.LootRegistry;
 import net.rosemarythyme.simplymore.registry.*;
+import net.rosemarythyme.simplymore.registry.item.*;
+import net.rosemarythyme.simplymore.world.ActiveAbilityManager;
+import net.rosemarythyme.simplymore.client.world.ClientActiveAbilityManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 public class SimplyMore {
+	@SuppressWarnings("unused")
     public static final Logger LOGGER = LoggerFactory.getLogger("simplymore");
 	public static final String ID = "simplymore";
 
+	public static Identifier identifier(String path) {
+		return Identifier.of(ID, path);
+	}
+
 	public static void init() {
-		ConfigWrapper.registerModConfigs();
+		ScreenHandlerRegistry.register();
+		ConfigWrapper.register();
+		StatusEffectRegistry.register();
 
-		ModEffectsRegistry.registerModEffects();
+		EntityRegistry.register();
 
-		ModEntityRegistry.registerModEntities();
-		EnvExecutor.runInEnv(Env.CLIENT, () -> SimplyMoreClientInit::registerEntityRenderers);
+		ItemRegistry.register();
+		RecipeTypeRegistry.register();
+		TransformationRegistry.register();
 
-		ModItemsRegistry.registerModItems();
-		ModItemsRegistry.registerItemGroup();
-		TransformationRegistry.registerTransformations();
+		ItemComponentRegistry.register();
+		TagRegistry.register();
+		SoundEventRegistry.register();
+		registerEvents();
 
-		ModComponentRegistry.registerModComponents();
-		ModTagRegistry.registerModTags();
+		EnvExecutor.runInEnv(Env.SERVER, () -> SimplyMore::initServer);
+		EnvExecutor.runInEnv(Env.CLIENT, () -> SimplyMore::initClient);
+		PacketRegistry.registerC2S();
 
-		SimplyMore.registerEvents();
+		LifecycleEvent.SETUP.register(SimplyMore::postSetupInit);
+	}
 
-		LOGGER.info(ID + " Initialized Successfully!");
+	public static void postSetupInit() {
+		ImplicitRegistry.register();
+		AwakeningProfileRegistry.register();
+		ItemRegistry.addToItemGroup();
+		LootRegistry.register();
+		EnvExecutor.runInEnv(Env.CLIENT, () -> SimplyMore::postSetupClientInit);
+	}
+
+	@Environment(EnvType.CLIENT)
+	public static void postSetupClientInit() {
+		ClientItemPropertyRegistry.register();
+		HudOverlayItemRegistry.register();
+	}
+
+	@Environment(EnvType.SERVER)
+	public static void initServer() {
+		PacketRegistry.registerS2C();
+	}
+
+	@Environment(EnvType.CLIENT)
+	public static void initClient() {
+		ClientTooltipRegistry.register();
+		ClientEntityRendererRegistry.register();
+
+		PacketRegistry.registerS2CRecievers();
+
+		ClientLifecycleEvent.CLIENT_LEVEL_LOAD.register((ignored) -> ClientActiveAbilityManager.CLIENT.clear());
+		ClientTickEvent.CLIENT_POST.register(new TickClientEffects());
 	}
 
 	public static void registerEvents() {
-		PlayerEvent.PLAYER_JOIN.register(new RemoveStatusOnJoin());
-
+		LifecycleEvent.SERVER_STARTED.register((ignored) -> ActiveAbilityManager.SERVER.clear());
+		TickEvent.SERVER_PRE.register(new TickServerEffects());
 	}
 }

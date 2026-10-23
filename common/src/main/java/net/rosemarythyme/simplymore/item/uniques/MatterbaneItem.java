@@ -1,152 +1,134 @@
 package net.rosemarythyme.simplymore.item.uniques;
 
+import me.fzzyhmstrs.fzzy_config.validation.number.ValidatedDouble;
 import me.fzzyhmstrs.fzzy_config.validation.number.ValidatedFloat;
 import me.fzzyhmstrs.fzzy_config.validation.number.ValidatedInt;
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.component.type.DyedColorComponent;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.ToolMaterial;
 import net.minecraft.item.tooltip.TooltipType;
-import net.minecraft.particle.DustParticleEffect;
 import net.minecraft.particle.ParticleTypes;
 import net.minecraft.server.world.ServerWorld;
-import net.minecraft.sound.SoundEvents;
-import net.minecraft.text.Style;
 import net.minecraft.text.Text;
 import net.minecraft.util.Hand;
 import net.minecraft.util.TypedActionResult;
-import net.minecraft.util.math.Box;
 import net.minecraft.world.World;
-import net.rosemarythyme.simplymore.entity.RiftAreaEffectCloudEntity;
+import net.rosemarythyme.simplymore.entity.projectiles.AntimatterParticleEntity;
 import net.rosemarythyme.simplymore.item.SimplyMoreUniqueSwordItem;
-import net.rosemarythyme.simplymore.registry.ModItemsRegistry;
-import net.rosemarythyme.simplymore.util.SimplyMoreHelperMethods;
+import net.rosemarythyme.simplymore.registry.item.ItemRegistry;
+import net.rosemarythyme.simplymore.util.*;
+import net.rosemarythyme.simplymore.util.data.FootfallParticles;
+import net.sweenus.simplyswords.api.WeaponAbilityActivationSource;
+import net.sweenus.simplyswords.api.WeaponAbilityContext;
 import net.sweenus.simplyswords.config.settings.ItemStackTooltipAppender;
 import net.sweenus.simplyswords.config.settings.TooltipSettings;
+import net.sweenus.simplyswords.item.interfaces.UniqueWeaponActiveAbility;
 import net.sweenus.simplyswords.util.Styles;
-import org.joml.Vector3f;
 
 import java.util.List;
+import java.util.Optional;
 
-public class MatterbaneItem extends SimplyMoreUniqueSwordItem {
+public class MatterbaneItem extends SimplyMoreUniqueSwordItem implements UniqueWeaponActiveAbility {
+    public static final MatterbaneItem.EffectSettings SETTINGS = UNIQUE_CONFIG.matterbane;
 
-    int skillCooldown = effect.matterbane.cooldown;
-
-    public MatterbaneItem(ToolMaterial toolMaterial, int attackDamage, float attackSpeed, Settings settings) {
-        super(toolMaterial, attackDamage, attackSpeed, SwordTypes.SWORD, settings);
+    public MatterbaneItem(ToolMaterial toolMaterial, int attackDamage, float attackSpeed) {
+        super(toolMaterial, attackDamage, attackSpeed);
     }
 
-    public Vector3f getColor(ItemStack stack) {
-        DyedColorComponent color = stack.get(DataComponentTypes.DYED_COLOR);
-        if(color == null) {
-            return new Vector3f(1f, 0f, 0f);
-        } else {
-            int rgb = color.rgb();
-            int r = (rgb >> 16) & 0xFF;
-            int g = (rgb >> 8) & 0xFF;
-            int b = rgb & 0xFF;
+    @Override
+    public boolean onSwing(ItemStack stack, ServerWorld world, LivingEntity user, long timeSinceLastActivation) {
+        if (timeSinceLastActivation < SETTINGS.particleCooldown) return false;
 
-            return new Vector3f(r / 255f, g / 255f, b / 255f);
+        SummonUtils.spawnProjectile(new AntimatterParticleEntity(user, user.getEyePos(), MathUtils.getDirectionalVector(user.getYaw(), user.getPitch()), ItemStackUtils.getColorDec(stack, 0xFF0000)), user);
+        return true;
+    }
+
+    @Override
+    public boolean canActivate(WeaponAbilityContext context) {
+        if(context.activationSource() == WeaponAbilityActivationSource.PLAYER) {
+            return TargetUtils.findTarget(context.actor(), MatterbaneItem.SETTINGS.particleEmpowermentRange, entity -> entity instanceof AntimatterParticleEntity && ((AntimatterParticleEntity) entity).canEmpower(context.actor())).isPresent();
+        } else {
+            return !SummonUtils.getOwnedProjectiles(context.actor(), AntimatterParticleEntity.class).isEmpty();
         }
     }
 
     @Override
     public TypedActionResult<ItemStack> use(World world, PlayerEntity user, Hand hand) {
-        if (!user.getWorld().isClient()) {
-            Vector3f color = getColor(user.getStackInHand(hand));
-            RiftAreaEffectCloudEntity riftAreaEffectCloudEntity = new RiftAreaEffectCloudEntity(user.getWorld(),user.getX(),user.getY()+3,user.getZ(),user, color);
-            user.getWorld().spawnEntity(riftAreaEffectCloudEntity);
-            user.getWorld().playSound(null, user.getBlockPos(), SoundEvents.ENTITY_WARDEN_DIG, user.getSoundCategory(), 1F, 2F);
-            user.getItemCooldownManager().set(this, skillCooldown);
-        }
-        return super.use(world, user, hand);
+        return useFromDefaultInput(world, user, hand);
     }
 
     @Override
-    public boolean postHit(ItemStack stack, LivingEntity target, LivingEntity attacker) {
-        if (!attacker.getWorld().isClient()) {
-            if (SimplyMoreHelperMethods.chance(attacker, effect.matterbane.chance) && attacker instanceof PlayerEntity player) {
-                fireBolt(player, getColor(attacker.getStackInHand(Hand.MAIN_HAND)));
-            }
+    public boolean activate(WeaponAbilityContext context) {
+        Optional<Entity> particle;
+        if(context.activationSource() == WeaponAbilityActivationSource.PLAYER) {
+            particle = TargetUtils.findTarget(context.actor(), MatterbaneItem.SETTINGS.particleEmpowermentRange, entity -> entity instanceof AntimatterParticleEntity p && p.canEmpower(context.actor()));
+        } else {
+            List<AntimatterParticleEntity> particles = SummonUtils.getOwnedProjectiles(context.actor(), AntimatterParticleEntity.class);
+            particle = particles.isEmpty() ? Optional.empty() : Optional.of(particles.getFirst());
         }
-        return super.postHit(stack, target, attacker);
-    }
 
-    public void fireBolt(PlayerEntity user, Vector3f color) {
-        user.getWorld().playSound(null, user.getBlockPos(), SoundEvents.ENTITY_ZOMBIE_VILLAGER_CONVERTED, user.getSoundCategory(), 1F, 2F);
-        for(int j = 0; j< effect.matterbane.range * 4; j++) {
-
-            float yaw = (float) Math.toRadians(user.getYaw()+90);
-
-            float velocityX = (float) (Math.cos(yaw)) * 0.25f;
-            float velocityZ = (float) (Math.sin(yaw)) * 0.25f;
-
-            double dX = velocityX * j;
-            double dZ = velocityZ * j;
-
-            double x = user.getX();
-            double y = (user.getEyeY() + user.getY())/2;
-            double z = user.getZ();
-
-
-            DustParticleEffect particleEffect = new DustParticleEffect(color,2);
-
-            ((ServerWorld) user.getWorld()).spawnParticles(particleEffect,x+dX,y,z+dZ,1,0,0,0,0);
-            for (LivingEntity entity : user.getWorld().getNonSpectatingEntities(LivingEntity.class,new Box(x-0.6+dX,y-0.6,z-0.6+dZ,x+0.6+dX,y+0.6,z+0.6+dZ)))
-            {
-                if (SimplyMoreHelperMethods.checkFriendlyFire(entity, user) || entity == user || entity.isInvulnerable()) continue;
-
-                entity.damage(user.getDamageSources().magic(),effect.matterbane.damage);
-            }
+        if(particle.isPresent() && particle.get() instanceof AntimatterParticleEntity target) {
+            target.empower();
         }
-    }
 
+        return true;
+    }
 
     @Override
-    public void inventoryTick(ItemStack stack, World world, Entity entity, int slot, boolean selected) {
-        SimplyMoreHelperMethods.simplyMore$footfallsHelper(entity, stack, world, ParticleTypes.ASH);
-        super.inventoryTick(stack, world, entity, slot, selected);
+    public int getActivationCooldownTicks(ItemStack stack, WeaponAbilityContext context) {
+        return SETTINGS.cooldown;
+    }
+
+    @Override
+    public FootfallParticles getFootfalls() {
+        return new FootfallParticles(ParticleTypes.ASH);
     }
 
     @Override
     public void appendTooltip(ItemStack itemStack, TooltipContext tooltipContext, List<Text> tooltip, TooltipType type) {
-        Style textStyle = Styles.TEXT;
-        Style abilityStyle = Styles.ABILITY;
-        Style rightClickStyle = Styles.RIGHT_CLICK;
-
         tooltip.add(Text.literal(""));
-        tooltip.add(Text.translatable("item.simplymore.matterbane.tooltip1").setStyle(abilityStyle));
-        tooltip.add(Text.translatable("item.simplymore.matterbane.tooltip2").setStyle(textStyle));
-        tooltip.add(Text.translatable("item.simplymore.matterbane.tooltip3", effect.matterbane.range).setStyle(textStyle));
-        tooltip.add(Text.translatable("item.simplymore.matterbane.tooltip4").setStyle(textStyle));
+        tooltip.add(Text.translatable("item.simplymore.matterbane.tooltip1").setStyle(Styles.ABILITY));
+        tooltip.add(Text.translatable("item.simplymore.matterbane.tooltip2").setStyle(Styles.TEXT));
         tooltip.add(Text.literal(""));
-        tooltip.add(Text.translatable("item.simplyswords.onrightclick").setStyle(rightClickStyle));
-        tooltip.add(Text.translatable("item.simplymore.matterbane.tooltip5").setStyle(textStyle));
-        tooltip.add(Text.translatable("item.simplymore.matterbane.tooltip6").setStyle(textStyle));
-        tooltip.add(Text.translatable("item.simplymore.matterbane.tooltip7").setStyle(textStyle));
-        tooltip.add(Text.translatable("item.simplymore.matterbane.tooltip8").setStyle(textStyle));
+        tooltip.add(Text.translatable("item.simplymore.matterbane.tooltip3").setStyle(Styles.RIGHT_CLICK));
         tooltip.add(Text.literal(""));
-        tooltip.add(Text.translatable("item.simplymore.matterbane.tooltip9").setStyle(textStyle));
-        tooltip.add(Text.translatable("item.simplymore.matterbane.tooltip10").setStyle(textStyle));
+        tooltip.add(Text.translatable("item.simplyswords.onrightclick").setStyle(Styles.RIGHT_CLICK));
+        tooltip.add(Text.translatable("item.simplymore.matterbane.tooltip4").setStyle(Styles.TEXT));
+        appendAbilityCooldownTooltip(tooltip, itemStack, SETTINGS.cooldown);
+        tooltip.add(Text.literal(""));
+        tooltip.add(Text.translatable("item.simplymore.matterbane.tooltip5").setStyle(Styles.ABILITY));
 
         super.appendTooltip(itemStack, tooltipContext, tooltip, type);
     }
 
     public static class EffectSettings extends TooltipSettings {
         public EffectSettings() {
-            super(new ItemStackTooltipAppender(ModItemsRegistry.MATTERBANE));
+            super(new ItemStackTooltipAppender(ItemRegistry.MATTERBANE));
         }
 
-        @ValidatedFloat.Restrict(min = 0f, max = 1f)
-        public float chance = 0.2f;
         @ValidatedInt.Restrict(min = 0)
-        public int range = 8;
+        public int cooldown = 600;
+        @ValidatedInt.Restrict(min = 0)
+        public int particleCooldown = 30;
+        @ValidatedInt.Restrict(min = 0)
+        public int particleLifespan = 240;
+        @ValidatedInt.Restrict(min = 0)
+        public int particleStableTime = 40;
+        @ValidatedInt.Restrict(min = 0)
+        public int particleEmpowermentDuration = 200;
         @ValidatedFloat.Restrict(min = 0f)
-        public int damage = 6;
-        @ValidatedInt.Restrict(min = 0)
-        public int cooldown = 1200;
+        public float particleEmpowermentRadius = 6f;
+        @ValidatedFloat.Restrict(min = 0f)
+        public float particleEmpowermentRange = 15f;
+        @ValidatedFloat.Restrict(min = 0f)
+        public float explosionDamage = 12f;
+        @ValidatedFloat.Restrict(min = 0f)
+        public float empoweredExplosionDamage = 24f;
+        @ValidatedDouble.Restrict(min = 0)
+        public double explosionRange = 3f;
+        @ValidatedDouble.Restrict(min = 0)
+        public double explosionKnockback = 1.7f;
     }
 }

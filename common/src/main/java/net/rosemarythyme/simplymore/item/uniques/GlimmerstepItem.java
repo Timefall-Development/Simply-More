@@ -2,8 +2,8 @@ package net.rosemarythyme.simplymore.item.uniques;
 
 import me.fzzyhmstrs.fzzy_config.validation.number.ValidatedFloat;
 import me.fzzyhmstrs.fzzy_config.validation.number.ValidatedInt;
-import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.effect.StatusEffect;
 import net.minecraft.entity.effect.StatusEffectInstance;
 import net.minecraft.entity.effect.StatusEffects;
 import net.minecraft.entity.player.PlayerEntity;
@@ -12,20 +12,21 @@ import net.minecraft.item.ToolMaterial;
 import net.minecraft.item.tooltip.TooltipType;
 import net.minecraft.particle.DustParticleEffect;
 import net.minecraft.particle.ParticleTypes;
+import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.server.world.ServerWorld;
-import net.minecraft.sound.SoundCategory;
 import net.minecraft.sound.SoundEvents;
 import net.minecraft.text.Style;
 import net.minecraft.text.Text;
 import net.minecraft.util.Hand;
 import net.minecraft.util.TypedActionResult;
 import net.minecraft.util.UseAction;
-import net.minecraft.util.math.Box;
 import net.minecraft.world.World;
 import net.rosemarythyme.simplymore.item.SimplyMoreUniqueSwordItem;
-import net.rosemarythyme.simplymore.registry.ModEffectsRegistry;
-import net.rosemarythyme.simplymore.registry.ModItemsRegistry;
-import net.rosemarythyme.simplymore.util.SimplyMoreHelperMethods;
+import net.rosemarythyme.simplymore.registry.item.ItemRegistry;
+import net.rosemarythyme.simplymore.registry.StatusEffectRegistry;
+import net.rosemarythyme.simplymore.util.*;
+import net.rosemarythyme.simplymore.util.data.FootfallParticles;
+import net.rosemarythyme.simplymore.util.data.Sound;
 import net.sweenus.simplyswords.config.settings.ItemStackTooltipAppender;
 import net.sweenus.simplyswords.config.settings.TooltipSettings;
 import net.sweenus.simplyswords.util.Styles;
@@ -34,117 +35,69 @@ import org.joml.Vector3f;
 import java.util.List;
 
 public class GlimmerstepItem extends SimplyMoreUniqueSwordItem {
-    int skillCooldown = effect.glimmerstep.cooldown;
-
-    public GlimmerstepItem(ToolMaterial toolMaterial, int attackDamage, float attackSpeed, Settings settings) {
-        super(toolMaterial, attackDamage, attackSpeed, SwordTypes.LANCE, settings);
+    public GlimmerstepItem(ToolMaterial toolMaterial, int attackDamage, float attackSpeed) {
+        super(toolMaterial, attackDamage, attackSpeed);
     }
 
-
-
     @Override
-    public boolean postHit(ItemStack stack, LivingEntity target, LivingEntity attacker) {
-        if (attacker.getWorld().isClient())
-            return super.postHit(stack, target, attacker);
+    public void onHit(ItemStack stack, LivingEntity target, LivingEntity attacker, ServerWorld world, int consecutiveHits, boolean isFirstInTick) {
+        if (attacker.getWorld().isClient) return;
 
-        float chance = attacker.getVehicle() instanceof LivingEntity ?
-                effect.glimmerstep.chanceMounted:
-                effect.glimmerstep.chance;
-        if (SimplyMoreHelperMethods.chance(attacker, chance)) {
-            if (attacker.hasStatusEffect(ModEffectsRegistry.getReference(ModEffectsRegistry.STARLIGHT))) {
-                int amplifier = attacker.getStatusEffect(ModEffectsRegistry.getReference(ModEffectsRegistry.STARLIGHT)).getAmplifier();
-                amplifier = Math.min(amplifier + 1, effect.glimmerstep.maxStarlight - 1);
-                attacker.addStatusEffect(new StatusEffectInstance(ModEffectsRegistry.getReference(ModEffectsRegistry.STARLIGHT), effect.glimmerstep.starlightTime, amplifier), attacker);
-            } else {
-                attacker.addStatusEffect(new StatusEffectInstance(ModEffectsRegistry.getReference(ModEffectsRegistry.STARLIGHT), effect.glimmerstep.starlightTime, 0), attacker);
-            }
+        float chance = EntityUtils.isRidingLivingEntity(attacker) ?
+                UNIQUE_CONFIG.glimmerstep.chanceMounted:
+                UNIQUE_CONFIG.glimmerstep.chance;
 
-            target.addStatusEffect(new StatusEffectInstance(StatusEffects.BLINDNESS, effect.glimmerstep.blindTime));
+        if (MathUtils.chance(attacker, chance)) {
+            EntityUtils.reapplyAndIncrementEffect(attacker, StatusEffectRegistry.getReference(StatusEffectRegistry.STARLIGHT), UNIQUE_CONFIG.glimmerstep.starlightTime, 1, UNIQUE_CONFIG.glimmerstep.maxStarlight);
+            target.addStatusEffect(new StatusEffectInstance(StatusEffects.BLINDNESS, UNIQUE_CONFIG.glimmerstep.blindTime));
 
-            attacker.getWorld().playSound(null, attacker.getX(), attacker.getY(), attacker.getZ(), SoundEvents.BLOCK_RESPAWN_ANCHOR_CHARGE, SoundCategory.PLAYERS, 1f,2f);
+            AudioVisualUtils.playSound(attacker.getWorld(), attacker.getPos(), new Sound(SoundEvents.BLOCK_RESPAWN_ANCHOR_CHARGE).setPitch(2f));
         }
-
-        return super.postHit(stack, target, attacker);
     }
 
     @Override
     public TypedActionResult<ItemStack> use(World world, PlayerEntity user, Hand hand) {
         ItemStack itemStack = user.getStackInHand(hand);
 
-        if(!user.hasStatusEffect(ModEffectsRegistry.getReference(ModEffectsRegistry.STARLIGHT))) {
+        if(!user.hasStatusEffect(StatusEffectRegistry.getReference(StatusEffectRegistry.STARLIGHT))) {
             return TypedActionResult.fail(itemStack);
         }
 
-        user.setCurrentHand(hand);
-        return itemStack.getDamage() >= itemStack.getMaxDamage() - 1
-                ? TypedActionResult.fail(itemStack)
-                : TypedActionResult.consume(itemStack);
+        return AttackUtils.holdToUse((ServerWorld) world, user, hand);
+
     }
 
     @Override
     public void usageTick(World world, LivingEntity user, ItemStack stack, int remainingUseTicks) {
-        if (user.getWorld().isClient || !(user instanceof PlayerEntity)) {
-            super.usageTick(world, user, stack, remainingUseTicks);
-            return;
+        super.usageTick(world, user, stack, remainingUseTicks);
+
+        if (user.getWorld().isClient) return;
+        if (!(user instanceof PlayerEntity player)) return;
+
+        if(remainingUseTicks == UNIQUE_CONFIG.glimmerstep.explosionWindup) {
+            AudioVisualUtils.playSound(user.getWorld(), user.getPos(), new Sound(SoundEvents.BLOCK_BEACON_ACTIVATE).setPitch(1.2f));
         }
 
-        int ticksUsed = getMaxUseTime(stack, user) - remainingUseTicks;
-
-        if(ticksUsed == 1) {
-            user.getWorld().playSound(null, user.getX(), user.getY(), user.getZ(), SoundEvents.BLOCK_BEACON_ACTIVATE, SoundCategory.PLAYERS, 1f,1.2f);
-        }
-
-
-        ((ServerWorld) user.getWorld()).spawnParticles(
-                new DustParticleEffect(new Vector3f(2f,2f,1f), 2f),
-                user.getX(),
-                user.getEyeY(),
-                user.getZ(),
-                Math.min(ticksUsed, Math.min(60, effect.glimmerstep.explosionWindup)),
-                4f,
-                4f,
-                4f,
-                0f
+        AudioVisualUtils.particleAroundEntity(player,
+                new DustParticleEffect(new Vector3f(2f, 2f, 1f), 2f),
+                Math.min(getMaxUseTime(stack, player) - remainingUseTicks, 60),
+                4f, 0f
         );
 
-        if(ticksUsed == effect.glimmerstep.explosionWindup) {
+        if(remainingUseTicks == 1) {
             user.stopUsingItem();
 
-            int boxSize = effect.glimmerstep.explosionRange;
-            Box box = new Box(user.getX() - boxSize, user.getY() - 2, user.getZ() - boxSize, user.getX() + boxSize, user.getY() + boxSize, user.getZ() + boxSize);
-            List<LivingEntity> livingEntities = user.getWorld().getNonSpectatingEntities(LivingEntity.class, box);
-            float damage;
-            try {
-                damage = effect.glimmerstep.explosionDamagePerStarlight * (user.getStatusEffect(ModEffectsRegistry.getReference(ModEffectsRegistry.STARLIGHT)).getAmplifier() + 1);
-            } catch (NullPointerException e) {
-                damage = effect.glimmerstep.explosionDamagePerStarlight;
-            }
+            RegistryEntry<StatusEffect> starlight = StatusEffectRegistry.getReference(StatusEffectRegistry.STARLIGHT);
+            if(!player.hasStatusEffect(starlight)) return;
 
-            ((PlayerEntity) user).getItemCooldownManager().set(this, skillCooldown);
-            user.removeStatusEffect(ModEffectsRegistry.getReference(ModEffectsRegistry.STARLIGHT));
+            TargetUtils.cuboidSelect(player, player.getPos().add(0d, 3d, 0d), UNIQUE_CONFIG.glimmerstep.explosionRange, 5, TargetUtils.TargetType.ENEMIES)
+                    .damage(UNIQUE_CONFIG.glimmerstep.explosionDamagePerStarlight * player.getStatusEffect(starlight).getAmplifier(), player.getDamageSources().explosion(player, player));
 
-            float finalDamage = damage;
-            livingEntities.stream().filter(
-                    livingEntity -> livingEntity != user.getVehicle()
-            ).forEach(
-                    livingEntity -> livingEntity.damage(user.getDamageSources().explosion(user, user),
-                            (SimplyMoreHelperMethods.checkFriendlyFire(livingEntity, user) || livingEntity == user)?
-                                    finalDamage * (effect.glimmerstep.glimmerstepAllyDamage) : finalDamage)
-            );
+            player.getItemCooldownManager().set(this, UNIQUE_CONFIG.glimmerstep.cooldown);
+            user.removeStatusEffect(starlight);
 
-            ((ServerWorld) user.getWorld()).spawnParticles(
-                    ParticleTypes.EXPLOSION,
-                    user.getX(),
-                    user.getEyeY(),
-                    user.getZ(),
-                    80,
-                    2f,
-                    2f,
-                    2f,
-                    0f
-            );
-
-            user.getWorld().playSound(null, user.getX(), user.getY(), user.getZ(), SoundEvents.ENTITY_GENERIC_EXPLODE, SoundCategory.PLAYERS, 1f,0.8f);
+            AudioVisualUtils.particleAroundEntity(player, ParticleTypes.EXPLOSION, 80, 2d, 0d);
+            AudioVisualUtils.playSound(world, user.getPos(), new Sound(SoundEvents.ENTITY_GENERIC_EXPLODE.value()).setPitch(0.8f));
         }
 
         super.usageTick(world, user, stack, remainingUseTicks);
@@ -152,7 +105,7 @@ public class GlimmerstepItem extends SimplyMoreUniqueSwordItem {
 
     @Override
     public int getMaxUseTime(ItemStack stack, LivingEntity user) {
-        return 9999999;
+        return UNIQUE_CONFIG.glimmerstep.explosionWindup;
     }
 
     @Override
@@ -161,9 +114,8 @@ public class GlimmerstepItem extends SimplyMoreUniqueSwordItem {
     }
 
     @Override
-    public void inventoryTick(ItemStack stack, World world, Entity entity, int slot, boolean selected) {
-        SimplyMoreHelperMethods.simplyMore$footfallsHelper(entity, stack, world, ParticleTypes.ELECTRIC_SPARK, ParticleTypes.ELECTRIC_SPARK, ParticleTypes.FIREWORK);
-        super.inventoryTick(stack, world, entity, slot, selected);
+    public FootfallParticles getFootfalls() {
+        return new FootfallParticles(ParticleTypes.ELECTRIC_SPARK, ParticleTypes.ELECTRIC_SPARK, ParticleTypes.FIREWORK);
     }
 
     @Override
@@ -175,23 +127,20 @@ public class GlimmerstepItem extends SimplyMoreUniqueSwordItem {
         tooltip.add(Text.literal(""));
         tooltip.add(Text.translatable("item.simplymore.glimmerstep.tooltip1").setStyle(abilityStyle));
         tooltip.add(Text.translatable("item.simplymore.glimmerstep.tooltip2",
-                effect.glimmerstep.maxStarlight).setStyle(textStyle));
-        tooltip.add(Text.translatable("item.simplymore.glimmerstep.tooltip3").setStyle(textStyle));
-        tooltip.add(Text.translatable("item.simplymore.glimmerstep.tooltip4").setStyle(textStyle));
+                UNIQUE_CONFIG.glimmerstep.maxStarlight).setStyle(textStyle));
         tooltip.add(Text.literal(""));
         tooltip.add(Text.translatable("item.simplymore.glimmerstep.tooltip5").setStyle(textStyle));
         tooltip.add(Text.literal(""));
         tooltip.add(Text.translatable("item.simplyswords.onrightclickheld").setStyle(rightClickStyle));
         tooltip.add(Text.translatable("item.simplymore.glimmerstep.tooltip6").setStyle(textStyle));
-        tooltip.add(Text.translatable("item.simplymore.glimmerstep.tooltip7").setStyle(textStyle));
+        tooltip.add(Text.literal(""));
         tooltip.add(Text.translatable("item.simplymore.glimmerstep.tooltip8").setStyle(textStyle));
-        tooltip.add(Text.translatable("item.simplymore.glimmerstep.tooltip9").setStyle(textStyle));
         super.appendTooltip(itemStack, tooltipContext, tooltip, type);
     }
 
     public static class EffectSettings extends TooltipSettings {
         public EffectSettings() {
-            super(new ItemStackTooltipAppender(ModItemsRegistry.GLIMMERSTEP));
+            super(new ItemStackTooltipAppender(ItemRegistry.GLIMMERSTEP));
         }
 
         @ValidatedInt.Restrict(min = 0)
@@ -216,8 +165,6 @@ public class GlimmerstepItem extends SimplyMoreUniqueSwordItem {
         public int explosionWindup = 60;
         @ValidatedInt.Restrict(min = 0)
         public int cooldown = 800;
-        @ValidatedFloat.Restrict(min = 0f)
-        public float glimmerstepAllyDamage = 0.8f;
         @ValidatedInt.Restrict(min = 0)
         public int starlightTime = 800;
     }

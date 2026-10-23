@@ -1,16 +1,26 @@
 {
     "attributes": {
-        "category": "soul_knife",
+        "two_handed": false,
+        "category": "warglaive",
         "attacks": [
             {
-                "hitbox": "FORWARD_BOX",
+                "hitbox": "HORIZONTAL_PLANE",
                 "damage_multiplier": 1,
-                "angle": 0,
+                "angle": 120,
                 "upswing": 0.5,
-                "animation": "bettercombat:one_handed_stab",
+                "animation": "simplyswords:warglaive_slash_horizontal_right",
                 "swing_sound": {
-                    "id": "bettercombat:dagger_slash",
-                    "pitch": 1.2
+                    "id": "bettercombat:rapier_slash"
+                }
+            },
+            {
+                "hitbox": "HORIZONTAL_PLANE",
+                "damage_multiplier": 1,
+                "angle": 120,
+                "upswing": 0.5,
+                "animation": "simplyswords:warglaive_slash_horizontal_left",
+                "swing_sound": {
+                    "id": "bettercombat:rapier_slash"
                 }
             }
         ],

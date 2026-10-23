@@ -1,24 +1,24 @@
 package net.rosemarythyme.simplymore.item.uniques.joke;
 
 import me.fzzyhmstrs.fzzy_config.validation.number.ValidatedFloat;
-import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
 import net.minecraft.item.ToolMaterial;
 import net.minecraft.item.tooltip.TooltipType;
-import net.minecraft.sound.SoundCategory;
 import net.minecraft.sound.SoundEvents;
-import net.minecraft.text.Style;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.World;
+import net.minecraft.util.Rarity;
 import net.rosemarythyme.simplymore.config.ConfigWrapper;
 import net.rosemarythyme.simplymore.config.UniqueEffectConfig;
 import net.rosemarythyme.simplymore.item.SimplyMoreSwordItem;
-import net.rosemarythyme.simplymore.registry.ModItemsRegistry;
-import net.rosemarythyme.simplymore.util.SimplyMoreHelperMethods;
+import net.rosemarythyme.simplymore.registry.item.ItemRegistry;
+import net.rosemarythyme.simplymore.util.AttackUtils;
+import net.rosemarythyme.simplymore.util.AudioVisualUtils;
+import net.rosemarythyme.simplymore.util.MathUtils;
+import net.rosemarythyme.simplymore.util.data.Sound;
 import net.sweenus.simplyswords.client.api.SimplySwordsClientAPI;
 import net.sweenus.simplyswords.config.settings.ItemStackTooltipAppender;
 import net.sweenus.simplyswords.config.settings.TooltipSettings;
@@ -28,68 +28,41 @@ import java.util.List;
 
 public class ThePanItem extends SimplyMoreSwordItem {
 
-    protected static UniqueEffectConfig effect = ConfigWrapper.unique;
+    protected static final UniqueEffectConfig UNIQUE_EFFECT = ConfigWrapper.UNIQUE;
 
-    public ThePanItem(ToolMaterial toolMaterial, int attackDamage, float attackSpeed, Settings settings) {
-        super(toolMaterial, attackDamage, attackSpeed, SwordTypes.SWORD, settings);
-        this.repairIngredient = new String[]{"minecraft:iron_ingot"};
+    public ThePanItem(ToolMaterial toolMaterial, int attackDamage, float attackSpeed) {
+        super(toolMaterial, attackDamage, attackSpeed, new Item.Settings().fireproof().rarity(Rarity.COMMON));
+    }
+
+    @Override
+    public boolean canRepair(ItemStack stack, ItemStack ingredient) {
+        return ingredient.getItem() == Items.IRON_INGOT || super.canRepair(stack, ingredient);
     }
 
     @Override
     public boolean postHit(ItemStack stack, LivingEntity target, LivingEntity attacker) {
-        if (attacker.getWorld().isClient()) {
-            return super.postHit(stack, target, attacker);
+        if (attacker.getWorld().isClient) return super.postHit(stack, target, attacker);
+
+        if (MathUtils.chance(attacker, UNIQUE_EFFECT.the_pan.chance)) {
+            AttackUtils.knockback(attacker, target, UNIQUE_EFFECT.the_pan.knockbackStrength);
+            AudioVisualUtils.playSound(attacker.getWorld(), attacker.getPos(), new Sound(SoundEvents.BLOCK_ANVIL_PLACE));
         }
 
-        if (!SimplyMoreHelperMethods.chance(attacker, effect.the_pan.chance)) {
-            return super.postHit(stack, target, attacker);
-        }
-
-        Vec3d targetPosition = target.getPos();
-        Vec3d attackerPosition = attacker.getPos();
-
-        double deltaX = targetPosition.getX() - attackerPosition.getX();
-        double deltaZ = targetPosition.getZ() - attackerPosition.getZ();
-
-        double distance = Math.hypot(deltaX, deltaZ);
-
-        if (distance == 0) {
-            return super.postHit(stack, target, attacker);
-        }
-
-        float knockbackStrength = effect.the_pan.knockbackStrength;
-
-        double normalizedDeltaX = deltaX / distance;
-        double normalizedDeltaZ = deltaZ / distance;
-
-        target.setVelocity(normalizedDeltaX * knockbackStrength, 0.2, normalizedDeltaZ * knockbackStrength);
-        target.velocityModified = true;
-
-        attacker.getWorld().playSound(null, attacker.getBlockPos(), SoundEvents.BLOCK_ANVIL_PLACE, SoundCategory.PLAYERS, 1, 1);
-
-        return true;
-    }
-
-    @Override
-    public void inventoryTick(ItemStack stack, World world, Entity entity, int slot, boolean selected) {
-        super.inventoryTick(stack, world, entity, slot, selected);
+        return super.postHit(stack, target, attacker);
     }
 
     @Override
     public void appendTooltip(ItemStack itemStack, TooltipContext tooltipContext, List<Text> tooltip, TooltipType type) {
-        Style textStyle = Styles.TEXT;
-        Style abilityStyle = Styles.ABILITY;
-
         tooltip.add(Text.literal(""));
-        tooltip.add(Text.translatable("item.simplymore.the_pan.tooltip1").setStyle(abilityStyle));
-        tooltip.add(Text.translatable("item.simplymore.the_pan.tooltip2").setStyle(textStyle));
+        tooltip.add(Text.translatable("item.simplymore.the_pan.tooltip1").setStyle(Styles.ABILITY));
+        tooltip.add(Text.translatable("item.simplymore.the_pan.tooltip2").setStyle(Styles.TEXT));
 
         super.appendTooltip(itemStack, tooltipContext, tooltip, type);
     }
 
     public static class EffectSettings extends TooltipSettings {
         public EffectSettings() {
-            super(new ItemStackTooltipAppender(ModItemsRegistry.THE_PAN));
+            super(new ItemStackTooltipAppender(ItemRegistry.THE_PAN));
         }
 
         @ValidatedFloat.Restrict(min = 0f, max = 1f)

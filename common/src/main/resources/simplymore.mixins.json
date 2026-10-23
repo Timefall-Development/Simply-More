@@ -2,15 +2,33 @@
   "required": true,
   "package": "net.rosemarythyme.simplymore.mixin",
   "compatibilityLevel": "JAVA_17",
+  "refmap": "simplymore-refmap.json",
   "minVersion": "0.8",
   "client": [
+    "ClientBackgroundRendererMixin",
+    "ClientBipedEntityRendererMixin",
+    "ClientCameraMixin",
+    "ClientEntityRenderDispatcherMixin",
+    "ClientEntityRendererMixin",
+    "ClientGameRendererMixin",
+    "ClientHeldItemRendererMixin",
+    "ClientInGameHudMixin",
+    "ClientInGameOverlayRendererMixin",
+    "ClientLivingEntityRendererMixin",
+    "ClientPlayerEntityRendererMixin",
+    "ClientWorldRendererMixin"
   ],
   "mixins": [
+    "ContainedRemnantItemMixin",
+    "EntityMixin",
+    "HelperMethodsMixin",
     "LivingEntityMixin",
     "LootTableModifierMixin",
     "MobEntityMixin",
     "OracleIndexUtilsMixin",
-    "PlayerEntityMixin"
+    "PlayerEntityMixin",
+    "SimplySwordsAPIMixin",
+    "WeaponImplicitRegistryMixin"
   ],
   "injectors": {
     "defaultRequire": 1

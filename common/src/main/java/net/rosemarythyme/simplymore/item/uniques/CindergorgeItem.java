@@ -2,111 +2,88 @@ package net.rosemarythyme.simplymore.item.uniques;
 
 import me.fzzyhmstrs.fzzy_config.validation.number.ValidatedFloat;
 import me.fzzyhmstrs.fzzy_config.validation.number.ValidatedInt;
-import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.effect.StatusEffectInstance;
-import net.minecraft.entity.effect.StatusEffects;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.ToolMaterial;
 import net.minecraft.item.tooltip.TooltipType;
 import net.minecraft.particle.ParticleTypes;
-import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
-import net.minecraft.sound.SoundCategory;
-import net.minecraft.sound.SoundEvents;
-import net.minecraft.text.Style;
 import net.minecraft.text.Text;
 import net.minecraft.util.Hand;
 import net.minecraft.util.TypedActionResult;
 import net.minecraft.util.UseAction;
-import net.minecraft.util.math.Box;
 import net.minecraft.world.World;
 import net.rosemarythyme.simplymore.item.SimplyMoreUniqueSwordItem;
-import net.rosemarythyme.simplymore.item.interfaces.CooldownOnUnselected;
-import net.rosemarythyme.simplymore.registry.ModItemsRegistry;
-import net.rosemarythyme.simplymore.util.SimplyMoreHelperMethods;
+import net.rosemarythyme.simplymore.item.components.RotationComponent;
+import net.rosemarythyme.simplymore.item.interfaces.StoppableAbilityItem;
+import net.rosemarythyme.simplymore.registry.item.ItemComponentRegistry;
+import net.rosemarythyme.simplymore.registry.item.ItemRegistry;
+import net.rosemarythyme.simplymore.util.AttackUtils;
+import net.rosemarythyme.simplymore.util.data.FootfallParticles;
+import net.rosemarythyme.simplymore.world.ActiveAbilityManager;
+import net.sweenus.simplyswords.api.WeaponAbilityActivationSource;
+import net.sweenus.simplyswords.api.WeaponAbilityContext;
 import net.sweenus.simplyswords.config.settings.ItemStackTooltipAppender;
 import net.sweenus.simplyswords.config.settings.TooltipSettings;
+import net.sweenus.simplyswords.item.interfaces.UniqueWeaponActiveAbility;
 import net.sweenus.simplyswords.util.Styles;
 
 import java.util.List;
 
 
-public class CindergorgeItem extends SimplyMoreUniqueSwordItem implements CooldownOnUnselected {
+public class CindergorgeItem extends SimplyMoreUniqueSwordItem implements UniqueWeaponActiveAbility, StoppableAbilityItem {
+    public static final CindergorgeItem.EffectSettings SETTINGS = UNIQUE_CONFIG.cindergorge;
 
-    int skillCooldown = effect.cindergorge.cooldown;
-
-    public CindergorgeItem(ToolMaterial toolMaterial, int attackDamage, float attackSpeed, Settings settings) {
-        super(toolMaterial, attackDamage, attackSpeed, SwordTypes.SWORD, settings);
+    public CindergorgeItem(ToolMaterial toolMaterial, int attackDamage, float attackSpeed) {
+        super(toolMaterial, attackDamage, attackSpeed);
     }
-
 
     @Override
     public TypedActionResult<ItemStack> use(World world, PlayerEntity user, Hand hand) {
-        ItemStack itemStack = user.getStackInHand(hand);
+        return useFromDefaultInput(world, user, hand);
+    }
 
-        if (itemStack.getDamage() >= itemStack.getMaxDamage() - 1) {
-            return TypedActionResult.fail(itemStack);
-        } else {
-            user.setCurrentHand(hand);
-            startUsing(itemStack, hand);
-            return TypedActionResult.consume(itemStack);
+    @Override
+    public boolean canActivate(WeaponAbilityContext context) {
+        return context.actor().isAlive() && !ActiveAbilityManager.SERVER.isInAbility(context.actor(), ActiveAbilityManager.Type.FLAME_FLINGER);
+    }
+
+    @Override
+    public boolean activate(WeaponAbilityContext context) {
+        if(context.activationSource() == WeaponAbilityActivationSource.PLAYER) return false;
+        startAbility(context.actor(), context.actor().getStackInHand(context.hand()));
+
+        return true;
+    }
+
+    private static void startAbility(LivingEntity user, ItemStack stack) {
+        ActiveAbilityManager.SERVER.start(user, ActiveAbilityManager.Type.FLAME_FLINGER, SETTINGS.maxUseTime);
+        stack.set(ItemComponentRegistry.ROTATION.get(), new RotationComponent(user.getYaw(), user.getWorld().getTime(), 0f));
+    }
+
+    @Override
+    public void usageTick(World world, LivingEntity user, ItemStack stack, int remainingTicks) {
+        if(world.isClient) return;
+
+        if (remainingTicks == getMaxUseTime(stack, user) - 1) {
+            startAbility(user, stack);
         }
     }
 
     @Override
-    public void usageTick(World world, LivingEntity user, ItemStack stack, int remainingUseTicks) {
-
-        int ticksUntilUseEnd = this.getMaxUseTime(stack, user) - remainingUseTicks;
-        if (remainingUseTicks == 1) {
-            user.stopUsingItem();
-        }
-
-        float originalYaw = user.getYaw();
-        float turnAngle = 54f * (1 - ((float) remainingUseTicks / effect.cindergorge.maxUseTime));
-        user.setYaw(originalYaw + turnAngle);
-
-        if(user instanceof ServerPlayerEntity) {
-                double yawAngle = Math.toRadians(user.getYaw());
-                double cosYaw = Math.cos(yawAngle);
-                double sinYaw = Math.sin(yawAngle);
-
-                for (int distanceMultiplier = 1; distanceMultiplier < effect.cindergorge.range; distanceMultiplier++) {
-                    double offsetX = -distanceMultiplier * sinYaw;
-                    double offsetZ = distanceMultiplier * cosYaw;
-
-                    double spawnX = user.getX() + 1.2 * offsetX;
-                    double spawnZ = user.getZ() + 1.2 * offsetZ;
-
-                    ((ServerWorld) world).spawnParticles(ParticleTypes.FLAME, spawnX, user.getEyeY(), spawnZ, 20, 0.2, 0.2, 0.2, 0.1);
-                    world.playSound(null, spawnX, user.getEyeY(), spawnZ, SoundEvents.ITEM_FIRECHARGE_USE, SoundCategory.PLAYERS, 0.1f, 1f);
-
-                    for (LivingEntity entity : user.getWorld().getNonSpectatingEntities(LivingEntity.class,new Box(spawnX-0.75,user.getEyeY()-0.75,spawnZ-0.75,spawnX+0.75,user.getEyeY()+0.75,spawnZ+0.75)))
-                    {
-                        if (SimplyMoreHelperMethods.checkFriendlyFire(entity, user) || entity == user || entity.isInvulnerable()) continue;
-
-                        entity.damage(user.getDamageSources().inFire(),effect.cindergorge.fireDamage);
-                        entity.setOnFireFor(3);
-                    }
-                }
-        }
-
+    public int getActivationCooldownTicks(ItemStack stack, WeaponAbilityContext context) {
+        return SETTINGS.cooldown;
     }
 
-    @Override
-    public void onStoppedUsing(ItemStack stack, World world, LivingEntity user, int remainingUseTicks) {
-        float relativeTime = (1 - ((float) remainingUseTicks / effect.cindergorge.maxUseTime));
-        float cooldown = skillCooldown * relativeTime;
-        cooldown = Math.max(cooldown, 120f);
-        user.addStatusEffect(new StatusEffectInstance(StatusEffects.NAUSEA, (int) (150f * relativeTime)));
-        super.onStoppedUsing(stack, world, user, remainingUseTicks);
-        ((PlayerEntity) user).getItemCooldownManager().set(this, (int) cooldown);
-    }
-
-    @Override
     public int getMaxUseTime(ItemStack stack, LivingEntity user) {
-        return effect.cindergorge.maxUseTime;
+        return SETTINGS.maxUseTime;
+    }
+
+    @Override
+    public TypedActionResult<ItemStack> startPlayerAbility(World world, PlayerEntity user, Hand hand) {
+        if(!(world instanceof ServerWorld serverWorld)) return TypedActionResult.pass(user.getStackInHand(hand));
+        return AttackUtils.holdToUse(serverWorld, user, hand);
     }
 
     @Override
@@ -114,53 +91,51 @@ public class CindergorgeItem extends SimplyMoreUniqueSwordItem implements Cooldo
         return UseAction.SPEAR;
     }
 
-
     @Override
-    public void inventoryTick(ItemStack stack, World world, Entity entity, int slot, boolean selected) {
-        if(entity instanceof PlayerEntity player) {
-            detectCooldown(player, selected, stack, skillCooldown, false);
-        }
-
-        SimplyMoreHelperMethods.simplyMore$footfallsHelper(entity, stack, world, ParticleTypes.LAVA);
-        super.inventoryTick(stack, world, entity, slot, selected);
+    public FootfallParticles getFootfalls() {
+        return new FootfallParticles(ParticleTypes.LAVA);
     }
 
     @Override
     public void appendTooltip(ItemStack itemStack, TooltipContext tooltipContext, List<Text> tooltip, TooltipType type) {
-        Style textStyle = Styles.TEXT;
-        Style abilityStyle = Styles.ABILITY;
-        Style rightClickStyle = Styles.RIGHT_CLICK;
-
         tooltip.add(Text.literal(""));
-        tooltip.add(Text.translatable("item.simplymore.cindergorge.tooltip1").setStyle(abilityStyle));
-        tooltip.add(Text.translatable("item.simplymore.cindergorge.tooltip2").setStyle(textStyle));
-        tooltip.add(Text.translatable("item.simplymore.cindergorge.tooltip3").setStyle(textStyle));
-        tooltip.add(Text.translatable("item.simplymore.cindergorge.tooltip4").setStyle(textStyle));
+        tooltip.add(Text.translatable("item.simplymore.cindergorge.tooltip1").setStyle(Styles.ABILITY));
+        tooltip.add(Text.translatable("item.simplymore.cindergorge.tooltip2").setStyle(Styles.TEXT));
         tooltip.add(Text.literal(" "));
-        tooltip.add(Text.translatable("item.simplyswords.onrightclickheld").setStyle(rightClickStyle));
-        tooltip.add(Text.translatable("item.simplymore.cindergorge.tooltip5").setStyle(textStyle));
-        tooltip.add(Text.translatable("item.simplymore.cindergorge.tooltip6").setStyle(textStyle));
-        tooltip.add(Text.translatable("item.simplymore.cindergorge.tooltip7").setStyle(textStyle));
+        tooltip.add(Text.translatable("item.simplyswords.onrightclickheld").setStyle(Styles.RIGHT_CLICK));
+        tooltip.add(Text.translatable("item.simplymore.cindergorge.tooltip3").setStyle(Styles.TEXT));
+        appendAbilityCooldownTooltip(tooltip, itemStack, SETTINGS.cooldown);
 
         super.appendTooltip(itemStack, tooltipContext, tooltip, type);
     }
 
+    @Override
+    public void stop(ItemStack stack, ServerWorld world, LivingEntity user, int ticksRemaining) {
+        ActiveAbilityManager.SERVER.stop(user, ActiveAbilityManager.Type.FLAME_FLINGER);
+    }
+
     public static class EffectSettings extends TooltipSettings {
         public EffectSettings() {
-            super(new ItemStackTooltipAppender(ModItemsRegistry.CINDERGORGE));
+            super(new ItemStackTooltipAppender(ItemRegistry.CINDERGORGE));
         }
         @ValidatedFloat.Restrict(min = 0f, max = 1f)
         public float chance = 0.4f;
         @ValidatedFloat.Restrict(min = 0f)
-        public float thornsDamage = 3f;
+        public float thornsDamage = 5f;
+        @ValidatedInt.Restrict(min = 0)
+        public int thornsFireDuration = 3;
+
         @ValidatedFloat.Restrict(min = 0f)
-        public float fireThornsDamage = 6f;
+        public float maxSpeed = 1.75f;
+        @ValidatedFloat.Restrict(min = 0f)
+        public float acceleration = 0.15f;
+
         @ValidatedInt.Restrict(min = 0)
         public int maxUseTime = 200;
         @ValidatedInt.Restrict(min = 0)
         public int range = 5;
         @ValidatedFloat.Restrict(min = 0f)
-        public float fireDamage = 5f;
+        public float fireDamage = 3f;
         @ValidatedInt.Restrict(min = 0)
         public int cooldown = 600;
     }

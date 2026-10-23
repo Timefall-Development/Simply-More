@@ -2,104 +2,87 @@ package net.rosemarythyme.simplymore.item.uniques.mimicry;
 
 import me.fzzyhmstrs.fzzy_config.validation.number.ValidatedFloat;
 import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.effect.StatusEffectInstance;
 import net.minecraft.entity.effect.StatusEffects;
-import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ToolMaterial;
+import net.minecraft.particle.ParticleTypes;
+import net.minecraft.server.world.ServerWorld;
+import net.minecraft.sound.SoundEvents;
 import net.minecraft.text.Text;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.RaycastContext;
-import net.rosemarythyme.simplymore.item.uniques.MimicryItem;
-import net.rosemarythyme.simplymore.registry.ModEffectsRegistry;
-import net.rosemarythyme.simplymore.registry.ModItemsRegistry;
-import net.rosemarythyme.simplymore.util.SimplyMoreHelperMethods;
+import net.rosemarythyme.simplymore.registry.item.ItemRegistry;
+import net.rosemarythyme.simplymore.util.AudioVisualUtils;
+import net.rosemarythyme.simplymore.util.MathUtils;
+import net.rosemarythyme.simplymore.util.TargetUtils;
+import net.rosemarythyme.simplymore.util.data.Sound;
+import net.rosemarythyme.simplymore.util.data.TargetList;
 import net.sweenus.simplyswords.config.settings.ItemStackTooltipAppender;
 import net.sweenus.simplyswords.config.settings.TooltipSettings;
-import org.joml.Vector3d;
+import net.sweenus.simplyswords.item.interfaces.TwoHandedWeapon;
+import net.sweenus.simplyswords.util.Styles;
 
 import java.util.List;
 
-public class KatanaItem extends MimicryItem {
-    public KatanaItem(ToolMaterial toolMaterial, int attackDamage, float attackSpeed, Settings settings) {
-        super(toolMaterial, attackDamage, attackSpeed, SwordTypes.SWORD, settings);
+public class KatanaItem extends MimicryItem implements TwoHandedWeapon {
+    public KatanaItem(ToolMaterial toolMaterial, int attackDamage, float attackSpeed) {
+        super(toolMaterial, attackDamage, attackSpeed);
     }
 
-
     @Override
-    public void usageTimeline(PlayerEntity player, int ticksUsed) {
-        player.addStatusEffect(
-                new StatusEffectInstance(
-                        StatusEffects.SLOWNESS,
-                        10,
-                        4
-                )
-        );
+    public boolean usageTimeline(LivingEntity entity, int ticksUsed) {
+        new TargetList(entity).applyEffect(StatusEffects.SLOWNESS, 10, 4);
 
-        if(ticksUsed == 30) {
-            Vec3d currentPos = player.getPos();
-            float damage = mimicry.katana.damage;
+        if(ticksUsed == 5) {
+            Vec3d originalPos = entity.getPos();
+            Vec3d endPos = entity.getEyePos().add(MathUtils.getDirectionalVector(entity.getYaw(), entity.getPitch()).multiply(MIMICRY_CONFIG.katana.maxRange));
 
-            Vec3d eyePos = player.getEyePos();
-            Vec3d playerRotation = player.getRotationVec(1);
-            Vec3d maxDistance = eyePos.add(playerRotation.x * 15, playerRotation.y * 15, playerRotation.z * 15);
-
-            BlockHitResult hit = player.getWorld().raycast(new RaycastContext(
-                    currentPos, maxDistance, RaycastContext.ShapeType.OUTLINE,
-                    RaycastContext.FluidHandling.NONE, player
+            BlockHitResult hit = entity.getWorld().raycast(new RaycastContext(
+                    entity.getEyePos(), endPos, RaycastContext.ShapeType.OUTLINE,
+                    RaycastContext.FluidHandling.NONE, entity
             ));
 
-            player.requestTeleport(hit.getPos().getX(), hit.getPos().getY() + 0.2, hit.getPos().getZ());
-            player.setVelocity(0, 0, 0);
-            player.velocityModified = true;
+            entity.requestTeleport(hit.getPos().getX(), hit.getPos().getY(), hit.getPos().getZ());
+            entity.setVelocity(0, 0, 0);
+            entity.velocityModified = true;
 
-            double distance = Vector3d.distance(currentPos.getX(), currentPos.getY(), currentPos.getZ(), maxDistance.getX(), maxDistance.getY(), maxDistance.getZ());
-
-            Vector3d normalisedVector = SimplyMoreHelperMethods.getNormalised3dVector(player);
-            for(int i = 0; i < 15; i++) {
-                double distanceInterval = distance/((double) 15 /(i+1));
-
-                Vec3d slashPos = new Vec3d(
-                        currentPos.getX() + (normalisedVector.x() * distanceInterval),
-                        currentPos.getY() + (normalisedVector.y() * distanceInterval),
-                        currentPos.getZ() + (normalisedVector.z() * distanceInterval)
-                );
-
-                List<LivingEntity> livingEntities = katanaAttack(player,slashPos.getX(), slashPos.getY(), slashPos.getZ(), 1.3f);
-                livingEntities.forEach(
-                        (target) -> target.damage(player.getDamageSources().playerAttack(player), damage)
-                );
-            }
+            katanaAttack(entity, originalPos, 1.3f)
+                    .forceDamageWithEnchants(MIMICRY_CONFIG.katana.damage, entity);
         }
 
-        if(ticksUsed >= 40) {
-            player.removeStatusEffect(ModEffectsRegistry.getReference(ModEffectsRegistry.MIMICRY_HAPPENING));
-        }
+        return ticksUsed >= 12;
+    }
+
+    public static TargetList katanaAttack(LivingEntity entity, Vec3d originalPos, float width) {
+        ServerWorld world = (ServerWorld) entity.getWorld();
+        AudioVisualUtils.particleLine(world, originalPos, entity.getEyePos(), ParticleTypes.SWEEP_ATTACK, 0.5f, 5, 0.25f, 0);
+
+        Sound sound = new Sound(SoundEvents.ENTITY_PLAYER_ATTACK_SWEEP).setPitch(entity.getRandom().nextBetween(9,14) / 10f);
+        AudioVisualUtils.playSound(world, originalPos, sound);
+        AudioVisualUtils.playSound(world, entity.getPos(), sound);
+
+        return TargetUtils.lineSelect(entity, originalPos, entity.getEyePos(), width, TargetUtils.TargetType.ENEMIES);
     }
 
     @Override
     public boolean isFormDisabledInConfig() {
-        return mimicry.katana.disabled;
-    }
-
-    @Override
-    public Text getMimicryFormName() {
-        return Text.translatable("item.simplymore.mimicry.katana");
+        return MIMICRY_CONFIG.katana.disabled;
     }
 
     @Override
     public void appendSpecificTooltip(List<Text> tooltip) {
-        tooltip.add(Text.translatable("item.simplymore.mimicry.katana.tooltip1").setStyle(textStyle));
-        tooltip.add(Text.translatable("item.simplymore.mimicry.katana.tooltip2").setStyle(textStyle));
+        tooltip.add(Text.translatable("item.simplymore.mimicry.katana.tooltip1").setStyle(Styles.TEXT));
     }
 
     public static class MimicryEffectSettings extends TooltipSettings {
         public MimicryEffectSettings() {
-            super(new ItemStackTooltipAppender(ModItemsRegistry.MIMICRY_KATANA));
+            super(new ItemStackTooltipAppender(ItemRegistry.MIMICRY_KATANA));
         }
 
         public boolean disabled = false;
         @ValidatedFloat.Restrict(min = 0f)
         public float damage = 12f;
+        @ValidatedFloat.Restrict(min = 0f)
+        public float maxRange = 15f;
     }
 }

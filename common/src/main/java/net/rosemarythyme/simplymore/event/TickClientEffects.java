@@ -1,0 +1,26 @@
+package net.rosemarythyme.simplymore.event;
+
+import dev.architectury.event.events.client.ClientTickEvent;
+import net.minecraft.client.MinecraftClient;
+import net.rosemarythyme.simplymore.client.camera.ScreenshakeManager;
+import net.rosemarythyme.simplymore.client.util.HudUtils;
+import net.rosemarythyme.simplymore.client.world.ClientActiveAbilityManager;
+import net.rosemarythyme.simplymore.client.world.PlayerLunacyManager;
+
+public class TickClientEffects implements ClientTickEvent.Client {
+    @Override
+    public void tick(MinecraftClient instance) {
+        ScreenshakeManager.tickScreenShakes();
+
+        ClientActiveAbilityManager.CLIENT.clearCache();
+        ClientActiveAbilityManager.CLIENT.tick();
+
+        if(instance.player != null) {
+            PlayerLunacyManager.tick(instance.player);
+
+            if(instance.player.age % 4 == 0) {
+                HudUtils.clearCache();
+            }
+        }
+    }
+}

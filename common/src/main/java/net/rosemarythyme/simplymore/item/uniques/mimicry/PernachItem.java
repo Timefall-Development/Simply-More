@@ -3,95 +3,62 @@ package net.rosemarythyme.simplymore.item.uniques.mimicry;
 import me.fzzyhmstrs.fzzy_config.validation.number.ValidatedFloat;
 import me.fzzyhmstrs.fzzy_config.validation.number.ValidatedInt;
 import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.effect.StatusEffectInstance;
 import net.minecraft.entity.effect.StatusEffects;
-import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ToolMaterial;
 import net.minecraft.text.Text;
-import net.rosemarythyme.simplymore.item.uniques.MimicryItem;
-import net.rosemarythyme.simplymore.registry.ModEffectsRegistry;
-import net.rosemarythyme.simplymore.registry.ModItemsRegistry;
+import net.rosemarythyme.simplymore.entity.MimicryVisualEntity;
+import net.rosemarythyme.simplymore.registry.StatusEffectRegistry;
+import net.rosemarythyme.simplymore.registry.item.ItemRegistry;
+import net.rosemarythyme.simplymore.util.MimicryTimelineUtils;
 import net.sweenus.simplyswords.config.settings.ItemStackTooltipAppender;
 import net.sweenus.simplyswords.config.settings.TooltipSettings;
+import net.sweenus.simplyswords.util.Styles;
 
 import java.util.List;
 
 public class PernachItem extends MimicryItem {
-    public PernachItem(ToolMaterial toolMaterial, int attackDamage, float attackSpeed, Settings settings) {
-        super(toolMaterial, attackDamage, attackSpeed, SwordTypes.SWORD, settings);
+    public PernachItem(ToolMaterial toolMaterial, int attackDamage, float attackSpeed) {
+        super(toolMaterial, attackDamage, attackSpeed);
     }
 
-
     @Override
-    public void usageTimeline(PlayerEntity player, int ticksUsed) {
-        float damage = mimicry.pernach.damage;
+    public boolean usageTimeline(LivingEntity entity, int ticksUsed) {
+        if(ticksUsed == 1 || ticksUsed == 10 || ticksUsed == 19) {
+            MimicryVisualEntity.Animation anim = ticksUsed == 10 ? MimicryVisualEntity.Animation.REVERSE_SWING : MimicryVisualEntity.Animation.SWING;
+            MimicryTimelineUtils.startAnimation(entity, 6, anim);
+        }
 
         if(ticksUsed == 3 || ticksUsed == 12) {
-            List<LivingEntity> enemies = sweepAttack(player, 1.4f);
-            enemies.forEach(
-                    target -> {
-                        if(target.isBlocking()) breakShield(target);
-                        target.damage(player.getDamageSources().playerAttack(player), damage);
-                    }
-            );
+            MimicryTimelineUtils.sweepAttack(entity, 1.4f)
+                    .breakShield()
+                    .forceDamageWithEnchants(MIMICRY_CONFIG.pernach.damage, entity);
         }
 
         if(ticksUsed == 21) {
-            List<LivingEntity> enemies = sweepAttack(player, 1.6f);
-
-            enemies.forEach(
-                    target -> {
-                        if(target.isBlocking()) return;
-                        target.damage(player.getDamageSources().playerAttack(player), damage);
-                        target.addStatusEffect(
-                                new StatusEffectInstance(
-                                        StatusEffects.SLOWNESS,
-                                        mimicry.pernach.effectTime,
-                                        1
-                                )
-                        );
-                        target.addStatusEffect(
-                                new StatusEffectInstance(
-                                        StatusEffects.WEAKNESS,
-                                        mimicry.pernach.effectTime,
-                                        0
-                                )
-                        );
-                        target.addStatusEffect(
-                                new StatusEffectInstance(
-                                        ModEffectsRegistry.getReference(ModEffectsRegistry.BLEED),
-                                        mimicry.pernach.effectTime,
-                                        0
-                                )
-                        );
-                    }
-            );
+            MimicryTimelineUtils.sweepAttack(entity, 1.6f)
+                    .breakShield()
+                    .damageWithEnchants(MIMICRY_CONFIG.pernach.damage, entity)
+                    .applyEffect(StatusEffects.SLOWNESS, MIMICRY_CONFIG.pernach.effectTime, 1)
+                    .applyEffect(StatusEffects.WEAKNESS, MIMICRY_CONFIG.pernach.effectTime, 0)
+                    .applyEffect(StatusEffectRegistry.getReference(StatusEffectRegistry.WOUNDED), MIMICRY_CONFIG.pernach.effectTime, 0);
         }
 
-        if(ticksUsed >= 25) {
-            player.removeStatusEffect(ModEffectsRegistry.getReference(ModEffectsRegistry.MIMICRY_HAPPENING));
-        }
+        return ticksUsed >= 25;
     }
 
     @Override
     public boolean isFormDisabledInConfig() {
-        return mimicry.pernach.disabled;
-    }
-
-    @Override
-    public Text getMimicryFormName() {
-        return Text.translatable("item.simplymore.mimicry.pernach");
+        return MIMICRY_CONFIG.pernach.disabled;
     }
 
     @Override
     public void appendSpecificTooltip(List<Text> tooltip) {
-        tooltip.add(Text.translatable("item.simplymore.mimicry.pernach.tooltip1").setStyle(textStyle));
-        tooltip.add(Text.translatable("item.simplymore.mimicry.pernach.tooltip2").setStyle(textStyle));
+        tooltip.add(Text.translatable("item.simplymore.mimicry.pernach.tooltip1").setStyle(Styles.TEXT));
     }
 
     public static class MimicryEffectSettings extends TooltipSettings {
         public MimicryEffectSettings() {
-            super(new ItemStackTooltipAppender(ModItemsRegistry.MIMICRY_PERNACH));
+            super(new ItemStackTooltipAppender(ItemRegistry.MIMICRY_PERNACH));
         }
 
         public boolean disabled = false;

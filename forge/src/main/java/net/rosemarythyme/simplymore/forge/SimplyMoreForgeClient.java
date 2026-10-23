@@ -5,7 +5,9 @@ import net.neoforged.api.distmarker.OnlyIn;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
-import net.rosemarythyme.simplymore.client.SimplyMoreClientInit;
+import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
+import net.rosemarythyme.simplymore.client.screen.ReformingScreen;
+import net.rosemarythyme.simplymore.registry.ScreenHandlerRegistry;
 
 @EventBusSubscriber(
         modid = "simplymore",
@@ -16,6 +18,11 @@ public class SimplyMoreForgeClient {
     @OnlyIn(Dist.CLIENT)
     @SubscribeEvent
     public static void onClientSetup(FMLClientSetupEvent event) {
-        event.enqueueWork(SimplyMoreClientInit::registerModelPredicates);
+    }
+
+
+    @SubscribeEvent
+    public static void onRegisterMenuScreens(RegisterMenuScreensEvent event) {
+        event.register(ScreenHandlerRegistry.REFORM.get(), ReformingScreen::new);
     }
 }

@@ -1,19 +1,20 @@
 package net.rosemarythyme.simplymore.item.uniques.joke;
 
 import net.minecraft.entity.Entity;
-import net.minecraft.entity.effect.StatusEffectInstance;
+import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.effect.StatusEffects;
-import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.ToolMaterial;
 import net.minecraft.item.tooltip.TooltipType;
-import net.minecraft.text.Style;
+import net.minecraft.registry.tag.ItemTags;
 import net.minecraft.text.Text;
-import net.minecraft.util.Hand;
 import net.minecraft.util.Identifier;
+import net.minecraft.util.Rarity;
 import net.minecraft.world.World;
 import net.rosemarythyme.simplymore.item.SimplyMoreSwordItem;
+import net.rosemarythyme.simplymore.util.InventoryUtils;
+import net.rosemarythyme.simplymore.util.data.TargetList;
 import net.sweenus.simplyswords.client.api.SimplySwordsClientAPI;
 import net.sweenus.simplyswords.util.Styles;
 
@@ -21,35 +22,23 @@ import java.util.List;
 
 public class JesterPenetrateItem extends SimplyMoreSwordItem {
 
-    public JesterPenetrateItem(ToolMaterial toolMaterial, int attackDamage, float attackSpeed, Settings settings) {
-        super(toolMaterial, attackDamage, attackSpeed, SwordTypes.LANCE, settings);
-        this.repairIngredient = new String[]{
-                "minecraft:white_wool",
-                "minecraft:orange_wool",
-                "minecraft:magenta_wool",
-                "minecraft:light_blue_wool",
-                "minecraft:yellow_wool",
-                "minecraft:lime_wool",
-                "minecraft:pink_wool",
-                "minecraft:gray_wool",
-                "minecraft:light_gray_wool",
-                "minecraft:cyan_wool",
-                "minecraft:purple_wool",
-                "minecraft:blue_wool",
-                "minecraft:brown_wool",
-                "minecraft:green_wool",
-                "minecraft:red_wool",
-                "minecraft:black_wool"
-        };
+    public JesterPenetrateItem(ToolMaterial toolMaterial, int attackDamage, float attackSpeed) {
+        super(toolMaterial, attackDamage, attackSpeed, new Item.Settings().fireproof().rarity(Rarity.COMMON));
+    }
+
+    @Override
+    public boolean canRepair(ItemStack stack, ItemStack ingredient) {
+        return ingredient.isIn(ItemTags.WOOL) || super.canRepair(stack, ingredient);
     }
 
     @Override
     public void inventoryTick(ItemStack stack, World world, Entity entity, int slot, boolean selected) {
-        if (world.getTime() % 20 == 0
-                && entity instanceof PlayerEntity player && player.getStackInHand(Hand.MAIN_HAND).equals(stack)) {
-            player.addStatusEffect(new StatusEffectInstance(StatusEffects.STRENGTH, 20, 0));
-            player.addStatusEffect(new StatusEffectInstance(StatusEffects.HASTE, 20, 1));
-            player.addStatusEffect(new StatusEffectInstance(StatusEffects.SPEED, 20, 0));
+        if(!(entity instanceof LivingEntity livingEntity)) return;
+
+        if (world.getTime() % 20 == 0 && InventoryUtils.isHoldingInMainHand(livingEntity, stack)) {
+            new TargetList(livingEntity).applyEffect(StatusEffects.STRENGTH, 20, 0)
+                    .applyEffect(StatusEffects.HASTE, 20, 1)
+                    .applyEffect(StatusEffects.SPEED, 20, 0);
         }
 
         super.inventoryTick(stack, world, entity, slot, selected);
@@ -57,15 +46,11 @@ public class JesterPenetrateItem extends SimplyMoreSwordItem {
 
     @Override
     public void appendTooltip(ItemStack itemStack, TooltipContext tooltipContext, List<Text> tooltip, TooltipType type) {
-        Style textStyle = Styles.TEXT;
-        Style abilityStyle = Styles.ABILITY;
-
         tooltip.add(Text.literal(""));
-        tooltip.add(Text.translatable("item.simplymore.jester_penetrate.tooltip1").setStyle(abilityStyle));
-        tooltip.add(Text.translatable("item.simplymore.jester_penetrate.tooltip2").setStyle(textStyle));
+        tooltip.add(Text.translatable("item.simplymore.jester_penetrate.tooltip1").setStyle(Styles.ABILITY));
+        tooltip.add(Text.translatable("item.simplymore.jester_penetrate.tooltip2").setStyle(Styles.TEXT));
         tooltip.add(Text.literal(""));
-        tooltip.add(Text.translatable("item.simplymore.jester_penetrate.tooltip3").setStyle(textStyle));
-        tooltip.add(Text.translatable("item.simplymore.jester_penetrate.tooltip4").setStyle(textStyle));
+        tooltip.add(Text.translatable("item.simplymore.jester_penetrate.tooltip3").setStyle(Styles.TEXT));
 
         super.appendTooltip(itemStack, tooltipContext, tooltip, type);
     }

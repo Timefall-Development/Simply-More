@@ -3,17 +3,17 @@ package net.rosemarythyme.simplymore.config;
 import dev.architectury.platform.Platform;
 import me.fzzyhmstrs.fzzy_config.api.ConfigApiJava;
 import me.fzzyhmstrs.fzzy_config.validation.misc.ValidatedCondition;
-import me.fzzyhmstrs.fzzy_config.validation.number.ValidatedFloat;
+import me.fzzyhmstrs.fzzy_config.validation.number.ValidatedInt;
 import net.minecraft.text.Text;
 
 public class ConfigWrapper {
-    // Configs
-    public static final WeaponAttributesConfig attributes = ConfigApiJava.registerAndLoadConfig(WeaponAttributesConfig::new);
-    public static final UniqueEffectConfig unique = ConfigApiJava.registerAndLoadConfig(UniqueEffectConfig::new);
+    public static final WeaponAttributesConfig ATTRIBUTES = ConfigApiJava.registerAndLoadConfig(WeaponAttributesConfig::new);
+    public static final UniqueEffectConfig UNIQUE = ConfigApiJava.registerAndLoadConfig(UniqueEffectConfig::new);
+    public static final ClientConfig CLIENT = ConfigApiJava.registerAndLoadConfig(ClientConfig::new);
 
     /// Edited from SimplySwords <code>WeaponAttributesConfig#createCondition</code>
-    public static ValidatedCondition<Float> modLoadedCondition(float defaultValue, String mod) {
-        return new ValidatedFloat(defaultValue)
+    public static ValidatedCondition<Integer> modLoadedCondition(int defaultValue, String mod) {
+        return new ValidatedInt(defaultValue)
                 .toCondition(
                         () -> Platform.isModLoaded(mod),
                         Text.translatable("config.simplymore.condition.mod_not_loaded." + mod + ".description"),
@@ -21,5 +21,5 @@ public class ConfigWrapper {
                 ).withFailTitle(Text.translatable("config.simplymore.condition.mod_not_loaded." + mod + ".title"));
     }
 
-    public static void registerModConfigs(){}
+    public static void register(){}
 }

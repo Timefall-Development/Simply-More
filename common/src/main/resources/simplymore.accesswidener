@@ -1,2 +1,8 @@
 accessWidener v2 named
 accessible method net/minecraft/entity/effect/StatusEffect <init> (Lnet/minecraft/entity/effect/StatusEffectCategory;I)V
+extendable method net/minecraft/entity/mob/EvokerFangsEntity damage (Lnet/minecraft/entity/LivingEntity;)V
+accessible field net/minecraft/entity/mob/EvokerFangsEntity warmup I
+accessible field net/minecraft/client/model/ModelPart children Ljava/util/Map;
+accessible class net/minecraft/client/gui/hud/InGameHud$HeartType
+accessible method net/minecraft/client/texture/Sprite <init> (Lnet/minecraft/util/Identifier;Lnet/minecraft/client/texture/SpriteContents;IIII)V
+accessible field net/minecraft/entity/projectile/ProjectileEntity ownerUuid Ljava/util/UUID;

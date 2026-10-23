@@ -1,135 +1,106 @@
 package net.rosemarythyme.simplymore.item.uniques;
 
+import me.fzzyhmstrs.fzzy_config.validation.collection.ValidatedSet;
 import me.fzzyhmstrs.fzzy_config.validation.number.ValidatedFloat;
 import me.fzzyhmstrs.fzzy_config.validation.number.ValidatedInt;
-import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.effect.StatusEffect;
 import net.minecraft.entity.effect.StatusEffectInstance;
-import net.minecraft.entity.effect.StatusEffects;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.ToolMaterial;
 import net.minecraft.item.tooltip.TooltipType;
 import net.minecraft.particle.ParticleTypes;
+import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.server.world.ServerWorld;
-import net.minecraft.sound.SoundCategory;
 import net.minecraft.sound.SoundEvents;
 import net.minecraft.text.Style;
 import net.minecraft.text.Text;
 import net.minecraft.util.Hand;
+import net.minecraft.util.Identifier;
 import net.minecraft.util.TypedActionResult;
 import net.minecraft.world.World;
 import net.rosemarythyme.simplymore.item.SimplyMoreUniqueSwordItem;
-import net.rosemarythyme.simplymore.registry.ModEffectsRegistry;
-import net.rosemarythyme.simplymore.registry.ModItemsRegistry;
-import net.rosemarythyme.simplymore.util.SimplyMoreHelperMethods;
+import net.rosemarythyme.simplymore.registry.item.ItemRegistry;
+import net.rosemarythyme.simplymore.registry.StatusEffectRegistry;
+import net.rosemarythyme.simplymore.util.*;
+import net.rosemarythyme.simplymore.util.data.FootfallParticles;
+import net.rosemarythyme.simplymore.util.data.Sound;
 import net.sweenus.simplyswords.config.settings.ItemStackTooltipAppender;
 import net.sweenus.simplyswords.config.settings.TooltipSettings;
-import net.sweenus.simplyswords.util.HelperMethods;
 import net.sweenus.simplyswords.util.Styles;
 
 import java.util.List;
 
 
 public class CulterexItem extends SimplyMoreUniqueSwordItem {
-    int skillCooldown = effect.culterex.cooldown;
-
-    public CulterexItem(ToolMaterial toolMaterial, int attackDamage, float attackSpeed, Settings settings) {
-        super(toolMaterial, attackDamage, attackSpeed, SwordTypes.SWORD, settings);
+    public CulterexItem(ToolMaterial toolMaterial, int attackDamage, float attackSpeed) {
+        super(toolMaterial, attackDamage, attackSpeed);
     }
 
     @Override
     public TypedActionResult<ItemStack> use(World world, PlayerEntity user, Hand hand) {
-        if(user.getWorld().isClient)
-            return super.use(world, user, hand);
+        if(user.getWorld().isClient) return super.use(world, user, hand);
 
-        Entity entity = HelperMethods.getTargetedEntity(user, effect.culterex.range);
+        LivingEntity target = null;
+//        LivingEntity target = TargetUtils.getTargetedEntity(user, UNIQUE_CONFIG.culterex.range, TargetUtils.TargetType.ENEMIES);
+        if(target == null) return super.use(world, user, hand);
 
-        if(entity instanceof LivingEntity target) {
-            if(target == user || SimplyMoreHelperMethods.checkFriendlyFire(target, user) || target.isDead()) {
-                return super.use(world, user, hand);
-            }
+        user.getItemCooldownManager().set(this, UNIQUE_CONFIG.culterex.cooldown);
+        AudioVisualUtils.particleAroundEntity(target, ParticleTypes.SOUL, 100, 0, 0.25f);
 
-            user.getItemCooldownManager().set(this, skillCooldown);
-            target.addStatusEffect(new StatusEffectInstance(
-                    StatusEffects.GLOWING,
-                    10
+        Sound sound = new Sound(SoundEvents.ENTITY_ALLAY_AMBIENT_WITHOUT_ITEM).setPitch(0.65f);
+        AudioVisualUtils.playSound(world, user.getPos(), sound);
+        AudioVisualUtils.playSound(world, target.getPos(), sound);
+
+        RegistryEntry<StatusEffect> hex = StatusEffectRegistry.getReference(StatusEffectRegistry.HEX);
+        if (target.hasStatusEffect(hex)) {
+            int amplifier = target.getStatusEffect(hex).getAmplifier();
+            target.removeStatusEffect(hex);
+
+            user.addStatusEffect(new StatusEffectInstance(
+                StatusEffectRegistry.getReference(StatusEffectRegistry.SOUL_HEALTH),
+                amplifier * 100,
+                amplifier
             ));
 
-            ((ServerWorld) user.getWorld()).spawnParticles(ParticleTypes.SOUL, entity.getX(), entity.getY(), entity.getZ(), 100, 0, 0, 0, 0.25f);
+            user.heal(amplifier * 2f);
+        } else {
+            List<StatusEffectInstance> effects = target.getStatusEffects().stream()
+                    .filter((effect) -> effect.getEffectType().value().isBeneficial())
+                    .toList();
 
-            user.getWorld().playSound(null, user.getX(), user.getY(), user.getZ(), SoundEvents.ENTITY_ALLAY_AMBIENT_WITHOUT_ITEM, SoundCategory.PLAYERS, 1,0.65f);
-            user.getWorld().playSound(null, entity.getX(), entity.getY(), entity.getZ(), SoundEvents.ENTITY_ALLAY_AMBIENT_WITHOUT_ITEM, SoundCategory.PLAYERS, 1,0.65f);
-
-            if(target.hasStatusEffect(ModEffectsRegistry.getReference(ModEffectsRegistry.HEX))) {
-                int amplifier = target.getStatusEffect(ModEffectsRegistry.getReference(ModEffectsRegistry.HEX)).getAmplifier() + 1;
-                target.removeStatusEffect(ModEffectsRegistry.getReference(ModEffectsRegistry.HEX));
-
-                user.addStatusEffect(
-                        new StatusEffectInstance(
-                                ModEffectsRegistry.getReference(ModEffectsRegistry.SOUL_HEALTH),
-                                amplifier * 100,
-                                amplifier - 1
-                        )
-                );
-
-                user.heal(amplifier*2);
-
-
-            } else {
-                List<StatusEffectInstance> statusEffects = target.getStatusEffects().stream()
-                        .filter(statusEffectInstance -> statusEffectInstance.getEffectType().value().isBeneficial()).toList();
-                int duration = effect.culterex.baseDuration;
-
-                for(StatusEffectInstance statusEffect : statusEffects) {
-                    int amplifier = statusEffect.getAmplifier() + 1;
-                    duration += amplifier * effect.culterex.durationPerEffectLevel;
-                }
-
-                target.addStatusEffect(
-                        new StatusEffectInstance(
-                                ModEffectsRegistry.getReference(ModEffectsRegistry.HEX),
-                                duration,
-                                0
-                        )
-                );
+            int duration = UNIQUE_CONFIG.culterex.baseDuration;
+            for (StatusEffectInstance effect : effects) {
+                duration += effect.getAmplifier() + 1;
             }
+
+            target.addStatusEffect(new StatusEffectInstance(hex, duration, 0));
         }
 
         return super.use(world, user, hand);
     }
 
     @Override
-    public boolean postHit(ItemStack stack, LivingEntity target, LivingEntity attacker) {
-        if (attacker.getWorld().isClient())
-            return super.postHit(stack, target, attacker);
+    public void onHit(ItemStack stack, LivingEntity target, LivingEntity attacker, ServerWorld world, int consecutiveHits, boolean isFirstInTick) {
+        if (attacker.getWorld().isClient()) return;
 
-        if(target.hasStatusEffect(ModEffectsRegistry.getReference(ModEffectsRegistry.HEX))
-                && SimplyMoreHelperMethods.chance(attacker, effect.culterex.chance)) {
-            int duration = target.getStatusEffect(ModEffectsRegistry.getReference(ModEffectsRegistry.HEX)).getDuration();
-            int amplifier = target.getStatusEffect(ModEffectsRegistry.getReference(ModEffectsRegistry.HEX)).getAmplifier();
-            duration += effect.culterex.extraDuration;
+        RegistryEntry<StatusEffect> hex = StatusEffectRegistry.getReference(StatusEffectRegistry.HEX);
+        if(!target.hasStatusEffect(hex)) return;
 
-            target.addStatusEffect(
-                    new StatusEffectInstance(
-                            ModEffectsRegistry.getReference(ModEffectsRegistry.HEX),
-                            duration,
-                            amplifier
-                    )
-            );
+        if (MathUtils.chance(attacker, UNIQUE_CONFIG.culterex.chance)) {
+            int duration = target.getStatusEffect(hex).getDuration() + UNIQUE_CONFIG.culterex.extraDuration;
 
+            EntityUtils.reapplyAndIncrementEffect(target,
+                    hex, duration, 1, 20);
 
-            attacker.getWorld().playSound(null, attacker.getX(), attacker.getY(), attacker.getZ(), SoundEvents.ENTITY_ALLAY_HURT, SoundCategory.PLAYERS, 1,0.65f);
+            AudioVisualUtils.playSound(attacker.getWorld(), attacker.getPos(), new Sound(SoundEvents.ENTITY_ALLAY_HURT).setPitch(0.65f));
         }
-
-        return super.postHit(stack, target, attacker);
     }
 
-
     @Override
-    public void inventoryTick(ItemStack stack, World world, Entity entity, int slot, boolean selected) {
-        SimplyMoreHelperMethods.simplyMore$footfallsHelper(entity, stack, world, ParticleTypes.ENCHANT);
-        super.inventoryTick(stack, world, entity, slot, selected);
+    public FootfallParticles getFootfalls() {
+        return new FootfallParticles(ParticleTypes.ENCHANT);
     }
 
     @Override
@@ -144,20 +115,15 @@ public class CulterexItem extends SimplyMoreUniqueSwordItem {
         tooltip.add(Text.literal(" "));
         tooltip.add(Text.translatable("item.simplyswords.onrightclick").setStyle(rightClickStyle));
         tooltip.add(Text.translatable("item.simplymore.culterex.tooltip3").setStyle(textStyle));
-        tooltip.add(Text.translatable("item.simplymore.culterex.tooltip4").setStyle(textStyle));
-        tooltip.add(Text.translatable("item.simplymore.culterex.tooltip5").setStyle(textStyle));
-        tooltip.add(Text.translatable("item.simplymore.culterex.tooltip6").setStyle(textStyle));
         tooltip.add(Text.literal(" "));
         tooltip.add(Text.translatable("item.simplymore.culterex.tooltip7").setStyle(textStyle));
-        tooltip.add(Text.translatable("item.simplymore.culterex.tooltip8").setStyle(textStyle));
-        tooltip.add(Text.translatable("item.simplymore.culterex.tooltip9").setStyle(textStyle));
 
         super.appendTooltip(itemStack, tooltipContext, tooltip, type);
     }
 
     public static class EffectSettings extends TooltipSettings {
         public EffectSettings() {
-            super(new ItemStackTooltipAppender(ModItemsRegistry.CULTEREX));
+            super(new ItemStackTooltipAppender(ItemRegistry.CULTEREX));
         }
 
 
@@ -173,6 +139,7 @@ public class CulterexItem extends SimplyMoreUniqueSwordItem {
         public int durationPerEffectLevel = 60;
         @ValidatedInt.Restrict(min = 0)
         public int range = 30;
+        public boolean includeGlobalBlacklist = true;
+        public ValidatedSet<Identifier> blacklist = ConfigUtils.createEffectList();
     }
-
 }

@@ -1,0 +1,132 @@
+package net.rosemarythyme.simplymore.entity.projectiles;
+
+import dev.architectury.networking.NetworkManager;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityType;
+import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.data.DataTracker;
+import net.minecraft.entity.projectile.ProjectileEntity;
+import net.minecraft.entity.projectile.ProjectileUtil;
+import net.minecraft.particle.ParticleTypes;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.server.world.ServerWorld;
+import net.minecraft.util.Pair;
+import net.minecraft.util.hit.BlockHitResult;
+import net.minecraft.util.hit.EntityHitResult;
+import net.minecraft.util.hit.HitResult;
+import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.World;
+import net.rosemarythyme.simplymore.networking.s2c.S2CChangeAbilityAgePacket;
+import net.rosemarythyme.simplymore.util.AudioVisualUtils;
+import net.rosemarythyme.simplymore.util.MathUtils;
+import net.rosemarythyme.simplymore.util.PredicateUtils;
+import net.rosemarythyme.simplymore.util.TargetUtils;
+import org.jetbrains.annotations.NotNull;
+
+import java.util.List;
+
+public abstract class AbstractAbilityProjectileEntity extends ProjectileEntity {
+    public AbstractAbilityProjectileEntity(@NotNull LivingEntity owner, Vec3d position, Vec3d velocity, EntityType<? extends AbstractAbilityProjectileEntity> entityType) {
+        this(entityType, owner.getWorld());
+        this.setOwner(owner);
+        this.refreshPositionAfterTeleport(position);
+        this.setVelocity(velocity);
+
+        Pair<Float, Float> yawAndPitch = MathUtils.getYawAndPitch(velocity);
+        this.setYaw(yawAndPitch.getLeft());
+        this.setPitch(yawAndPitch.getRight());
+    }
+
+    public AbstractAbilityProjectileEntity(EntityType<? extends ProjectileEntity> entityType, World world) {
+        super(entityType, world);
+    }
+
+    protected void onHit(HitResult result) {}
+
+    protected void serverTick(LivingEntity owner) {}
+
+    private void serverTick() {
+        Entity owner = getOwner();
+
+        if(age > getLifespan()) {
+            this.discard();
+            return;
+        }
+
+        if(!(owner instanceof LivingEntity livingOwner) || !owner.isAlive() || owner.getWorld() != this.getWorld()) {
+            this.discard();
+            return;
+        }
+
+        HitResult hitresult = ProjectileUtil.getCollision(this, PredicateUtils.createForTargetType(livingOwner, TargetUtils.TargetType.ENEMIES));
+        if(hitresult.getType() != HitResult.Type.MISS) {
+            if(canCollide(hitresult)) {
+                onHit(hitresult);
+
+                if(hitresult instanceof EntityHitResult entityHitResult) onEntityHit(entityHitResult);
+                if(hitresult instanceof BlockHitResult blockHitResult) onBlockHit(blockHitResult);
+
+                if(!shouldPierce(hitresult)) {
+                    this.discard();
+                }
+            }
+        }
+
+        serverTick(livingOwner);
+    }
+
+    public void setAge(int age, boolean sync) {
+        this.age = age;
+
+        if(!sync || !(this.getWorld() instanceof ServerWorld world)) return;
+
+        List<ServerPlayerEntity> players = world.getPlayers().stream().filter((player) -> player.squaredDistanceTo(getPos()) < 60 * 60).toList();
+        NetworkManager.sendToPlayers(players, new S2CChangeAbilityAgePacket(this.getId(), age));
+    }
+
+    public int getLifespan() {
+        return 20 * 60;
+    }
+
+    protected boolean shouldPierce(HitResult result) {
+        return false;
+    }
+
+    protected boolean canCollide(HitResult result) {
+        return true;
+    }
+
+    @Override
+    public void tick() {
+        super.tick();
+
+        ProjectileUtil.setRotationFromVelocity(this, 0.2F);
+
+        Vec3d velocity = this.getVelocity();
+        float drag = getAirDrag();
+        if(isTouchingWater()) {
+            AudioVisualUtils.particleAroundEntity(this, ParticleTypes.BUBBLE, 4, 0.25f, 0);
+            drag = getWaterDrag();
+        }
+
+        this.setVelocity(velocity.multiply(drag));
+        applyGravity();
+
+        if(!this.getWorld().isClient) serverTick();
+
+        velocity = getVelocity();
+        this.setPosition(getPos().add(velocity));
+    }
+
+    @Override
+    protected void initDataTracker(DataTracker.Builder builder) {
+    }
+
+    abstract float getAirDrag();
+    abstract float getWaterDrag();
+
+    @Override
+    protected double getGravity() {
+        return 0.08f;
+    }
+}

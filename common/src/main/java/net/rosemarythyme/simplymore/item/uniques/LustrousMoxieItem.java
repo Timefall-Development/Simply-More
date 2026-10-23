@@ -2,198 +2,204 @@ package net.rosemarythyme.simplymore.item.uniques;
 
 import me.fzzyhmstrs.fzzy_config.validation.number.ValidatedFloat;
 import me.fzzyhmstrs.fzzy_config.validation.number.ValidatedInt;
-import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.effect.StatusEffectInstance;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.ToolMaterial;
 import net.minecraft.item.tooltip.TooltipType;
+import net.minecraft.network.packet.s2c.play.PositionFlag;
 import net.minecraft.particle.ParticleTypes;
 import net.minecraft.server.world.ServerWorld;
-import net.minecraft.sound.SoundCategory;
-import net.minecraft.text.Style;
+import net.minecraft.sound.SoundEvents;
 import net.minecraft.text.Text;
 import net.minecraft.util.Hand;
 import net.minecraft.util.TypedActionResult;
 import net.minecraft.util.UseAction;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
+import net.rosemarythyme.simplymore.entity.LightOrbEntity;
+import net.rosemarythyme.simplymore.entity.LightbeamEntity;
 import net.rosemarythyme.simplymore.item.SimplyMoreUniqueSwordItem;
-import net.rosemarythyme.simplymore.registry.ModEffectsRegistry;
-import net.rosemarythyme.simplymore.registry.ModItemsRegistry;
-import net.rosemarythyme.simplymore.util.SimplyMoreHelperMethods;
+import net.rosemarythyme.simplymore.item.interfaces.StoppableAbilityItem;
+import net.rosemarythyme.simplymore.registry.item.ItemRegistry;
+import net.rosemarythyme.simplymore.util.*;
+import net.rosemarythyme.simplymore.util.data.FootfallParticles;
+import net.rosemarythyme.simplymore.util.data.Sound;
+import net.rosemarythyme.simplymore.world.PlayerItemUseManager;
+import net.sweenus.simplyswords.api.WeaponAbilityActivationSource;
+import net.sweenus.simplyswords.api.WeaponAbilityContext;
 import net.sweenus.simplyswords.config.settings.ItemStackTooltipAppender;
 import net.sweenus.simplyswords.config.settings.TooltipSettings;
+import net.sweenus.simplyswords.item.interfaces.TwoHandedWeapon;
+import net.sweenus.simplyswords.item.interfaces.UniqueWeaponActiveAbility;
 import net.sweenus.simplyswords.registry.SoundRegistry;
 import net.sweenus.simplyswords.util.Styles;
 
 import java.util.List;
 
-public class LustrousMoxieItem extends SimplyMoreUniqueSwordItem {
-    int skillCooldown = effect.lustrous_moxie.cooldown;
+public class LustrousMoxieItem extends SimplyMoreUniqueSwordItem implements TwoHandedWeapon, UniqueWeaponActiveAbility, StoppableAbilityItem {
+    public static LustrousMoxieItem.EffectSettings SETTINGS = UNIQUE_CONFIG.lustrous_moxie;
 
-    public LustrousMoxieItem(ToolMaterial toolMaterial, int attackDamage, float attackSpeed, Settings settings) {
-        super(toolMaterial, attackDamage, attackSpeed, SwordTypes.SWORD, settings);
+    public LustrousMoxieItem(ToolMaterial toolMaterial, int attackDamage, float attackSpeed) {
+        super(toolMaterial, attackDamage, attackSpeed);
     }
 
     @Override
-    public boolean postHit(ItemStack stack, LivingEntity target, LivingEntity attacker) {
-        if (!attacker.getWorld().isClient()) {
-            StatusEffectInstance radiantMarkEffect = target.getStatusEffect(ModEffectsRegistry.getReference(ModEffectsRegistry.RADIANT_MARK));
-            if (target.hasStatusEffect(ModEffectsRegistry.getReference(ModEffectsRegistry.RADIANT_MARK)) && radiantMarkEffect != null) {
-                target.damage(attacker.getDamageSources().magic(),radiantMarkEffect.getAmplifier() + 1);
+    public void onHit(ItemStack stack, LivingEntity target, LivingEntity attacker, ServerWorld world, int consecutiveHits, boolean isFirstInTick) {
+        if(MathUtils.chance(attacker, SETTINGS.chance)) {
+            List<LightOrbEntity> orbs = SummonUtils.getOwnedAbilities(attacker, LightOrbEntity.class)
+                            .stream().filter(orb -> orb.getPerson().isPresent() && orb.getPerson().get().equals(target.getUuid())).toList();
+
+            AudioVisualUtils.playSound(world, target.getPos(), new Sound(SoundRegistry.ELEMENTAL_BOW_HOLY_SHOOT_IMPACT_03.get()));
+            AudioVisualUtils.particleAroundEntity(target, ParticleTypes.FLASH, 1, 0, 0);
+
+            if(orbs.size() >= SETTINGS.maxOrbs) {
+                orbs.forEach(LightOrbEntity::explode);
+                AudioVisualUtils.playSound(world, target.getPos(), new Sound(SoundEvents.ITEM_TRIDENT_THUNDER.value()));
+            } else {
+                SummonUtils.spawnAbility(new LightOrbEntity(attacker, target.getPos(), target, orbs.size()), attacker);
             }
-            if (SimplyMoreHelperMethods.chance(attacker, effect.lustrous_moxie.chance)) {
-                if (target.hasStatusEffect(ModEffectsRegistry.getReference(ModEffectsRegistry.RADIANT_MARK)) && radiantMarkEffect != null) {
-                    int amplifier = radiantMarkEffect.getAmplifier() + 1;
-                    int duration = 240 - (amplifier * 40);
-                    target.addStatusEffect(new StatusEffectInstance(ModEffectsRegistry.getReference(ModEffectsRegistry.RADIANT_MARK), duration, amplifier), attacker);
-                } else {
-                    target.addStatusEffect(new StatusEffectInstance(ModEffectsRegistry.getReference(ModEffectsRegistry.RADIANT_MARK), 200, 0), attacker);
-                }
+        }
+    }
+
+    @Override
+    public TypedActionResult<ItemStack> startPlayerAbility(World world, PlayerEntity user, Hand hand) {
+        if(!(world instanceof ServerWorld serverWorld)) return TypedActionResult.pass(user.getStackInHand(hand));
+
+        List<LightbeamEntity> beams = SummonUtils.getOwnedAbilities(user, LightbeamEntity.class).stream().filter(LightbeamEntity::isFired).toList();
+        if(!beams.isEmpty()) {
+            teleport(user, beams.getFirst());
+            return TypedActionResult.pass(user.getStackInHand(hand));
+        }
+
+        return AttackUtils.holdToUse(serverWorld, user, hand);
+    }
+
+    public static BlockPos getTeleportPos(LightbeamEntity beam) {
+        BlockPos beamPos = beam.getBlockPos();
+
+        for (int i = 0; i <= 5; i++) {
+            BlockPos pos = beamPos.up(i);
+
+            if (beam.getWorld().getBlockState(pos).isAir()) {
+                return pos;
             }
         }
-        return super.postHit(stack, target, attacker);
+
+        return null;
     }
 
-    public void attack(PlayerEntity user) {
-        if (user.getWorld().isClient()) {
-            return;
+    private void teleport(LivingEntity user, LightbeamEntity beam) {
+        BlockPos pos = getTeleportPos(beam);
+        if(pos == null) return;
+
+        AudioVisualUtils.particleAroundEntity(user, ParticleTypes.WAX_OFF, 40, 0.25f, 0);
+        AudioVisualUtils.playSound(user.getWorld(), user.getPos(), new Sound(SoundRegistry.SWING_OMEN_ONE.get()).setPitch(2));
+
+        user.teleport((ServerWorld) user.getWorld(), pos.getX(), pos.getY(), pos.getZ(), PositionFlag.getFlags(0b00111), user.getYaw(), user.getPitch());
+
+        AudioVisualUtils.particleAroundEntity(user, ParticleTypes.FIREWORK, 100, 0.25f, 0.2f);
+        AudioVisualUtils.particleAroundEntity(user, ParticleTypes.FLASH, 1, 0, 0f);
+        AudioVisualUtils.playSound(user.getWorld(), user.getPos(), new Sound(SoundRegistry.SWING_OMEN_ONE.get()).setPitch(2));
+
+        beam.stopFiring();
+
+        if(user instanceof PlayerEntity player) {
+            player.getItemCooldownManager().set(this, SETTINGS.cooldown);
+            PlayerItemUseManager.stop(player, player.getActiveItem(), false);
         }
-
-        LivingEntity target = locateRadiantMarkedTarget(user);
-
-        if(target != null) {
-            damageAndKnockbackAndTeleportToRadiantMarkedTarget(target, user);
-            damageAndKnockbackNearbyNonRadiantMarkedEntities(target, user);
-
-            user.addStatusEffect(new StatusEffectInstance(ModEffectsRegistry.getReference(ModEffectsRegistry.STUNNED_MOXIE), effect.lustrous_moxie.stunTime, 0));
-            user.getWorld().playSound(null, user.getBlockPos(), SoundRegistry.ELEMENTAL_SWORD_ICE_ATTACK_01.get(), SoundCategory.PLAYERS);
-            user.getItemCooldownManager().set(this, skillCooldown);
-        }
-    }
-
-    private LivingEntity locateRadiantMarkedTarget(PlayerEntity user) {
-        int boxRange = effect.lustrous_moxie.range;
-        Box box = new Box(user.getX() - boxRange,user.getY() - boxRange,user.getZ() - boxRange,user.getX() + boxRange,user.getY() + boxRange,user.getZ() + boxRange);
-        List<LivingEntity> potentiallyMarkedLivingEntities = user.getWorld().getNonSpectatingEntities(LivingEntity.class, box);
-        LivingEntity markedEntity = potentiallyMarkedLivingEntities.stream().filter(livingEntity -> livingEntity.hasStatusEffect(ModEffectsRegistry.getReference(ModEffectsRegistry.RADIANT_MARK))).findAny().orElse(null);
-
-        if (markedEntity == null || (markedEntity == user || SimplyMoreHelperMethods.checkFriendlyFire(markedEntity, user))) {
-            return null;
-        }
-
-        return markedEntity;
-    }
-
-    private void damageAndKnockbackAndTeleportToRadiantMarkedTarget(LivingEntity targetEntity, PlayerEntity user) {
-        if (targetEntity == user.getAttacking()) {
-            user.teleport(targetEntity.getX(), targetEntity.getY(), targetEntity.getZ(), false);
-            ((ServerWorld) user.getWorld()).spawnParticles(ParticleTypes.WAX_OFF, user.getX(), user.getY() + 2, user.getZ(), 500, 3, 3, 3, 0);
-            targetEntity.removeStatusEffect(ModEffectsRegistry.getReference(ModEffectsRegistry.RADIANT_MARK));
-            knockbackAndDamageEntity(targetEntity, user, effect.lustrous_moxie.targetDamage);
-        }
-    }
-
-    private void damageAndKnockbackNearbyNonRadiantMarkedEntities(LivingEntity targetEntity, PlayerEntity user) {
-        int boxRange = effect.lustrous_moxie.aoe;
-        Box box = new Box(user.getX() - boxRange,user.getY() - boxRange,user.getZ() - boxRange,user.getX() + boxRange,user.getY() + boxRange,user.getZ() + boxRange);
-        List<LivingEntity> nearbyLivingEntities = user.getWorld().getNonSpectatingEntities(LivingEntity.class, box);
-        nearbyLivingEntities.remove(targetEntity);
-        for (LivingEntity livingEntity : nearbyLivingEntities) {
-            knockbackAndDamageEntity(livingEntity, user, effect.lustrous_moxie.aoeDamage);
-        }
-    }
-
-    private void knockbackAndDamageEntity(LivingEntity targetEntity, PlayerEntity user, float damage) {
-        if(targetEntity==user || SimplyMoreHelperMethods.checkFriendlyFire(targetEntity, user)) {
-            return;
-        }
-
-        targetEntity.damage(user.getDamageSources().playerAttack(user), damage);
-
-        Vec3d userPosition = user.getPos();
-        Vec3d entityPosition = targetEntity.getPos();
-
-        double deltaX = entityPosition.getX() - userPosition.getX();
-        double deltaZ = entityPosition.getZ() - userPosition.getZ();
-        double distance = Math.hypot(deltaX, deltaZ);
-
-        if (distance == 0) {
-            return;
-        }
-
-        double normalizedDeltaX = deltaX / distance;
-        double normalizedDeltaZ = deltaZ / distance;
-
-        targetEntity.setVelocity(normalizedDeltaX * effect.lustrous_moxie.knockbackStrength, 0.2, normalizedDeltaZ * effect.lustrous_moxie.knockbackStrength);
-        targetEntity.velocityModified = true;
     }
 
     @Override
-    public TypedActionResult<ItemStack> use(World world, PlayerEntity user, Hand hand) {
-        ItemStack itemStack = user.getStackInHand(hand);
-        user.setCurrentHand(hand);
-
-        return itemStack.getDamage() >= itemStack.getMaxDamage() - 1
-                ? TypedActionResult.fail(itemStack)
-                : TypedActionResult.consume(itemStack);
-    }
-
-    @Override
-    public void usageTick(World world, LivingEntity user, ItemStack stack, int remainingUseTicks) {
-        if (!user.getWorld().isClient && user instanceof PlayerEntity player) {
-             if (remainingUseTicks == 1)
-                 attack(player);
-        }
-        super.usageTick(world, user, stack, remainingUseTicks);
+    public int getActivationCooldownTicks(ItemStack stack, WeaponAbilityContext context) {
+        return SETTINGS.cooldown;
     }
 
     @Override
     public int getMaxUseTime(ItemStack stack, LivingEntity user) {
-        return 15;
+        return MathUtils.PSEUDOINFINITE_DURATION;
     }
 
     @Override
     public UseAction getUseAction(ItemStack stack) {
-        return UseAction.SPEAR;
+        return UseAction.BOW;
     }
 
+    @Override
+    public TypedActionResult<ItemStack> use(World world, PlayerEntity user, Hand hand) {
+        return useFromDefaultInput(world, user, hand);
+    }
 
     @Override
-    public void inventoryTick(ItemStack stack, World world, Entity entity, int slot, boolean selected) {
-        SimplyMoreHelperMethods.simplyMore$footfallsHelper(entity, stack, world, ParticleTypes.WAX_OFF);
-        super.inventoryTick(stack, world, entity, slot, selected);
+    public boolean activate(WeaponAbilityContext context) {
+        if(context.activationSource() == WeaponAbilityActivationSource.PLAYER) return false;
+
+        LightbeamEntity beam = new LightbeamEntity(context.actor(), context.origin());
+        SummonUtils.spawnAbility(beam, context.actor());
+        beam.tryFire();
+
+        AudioVisualUtils.playSound(context.world(), context.origin(), new Sound(SoundRegistry.MAGIC_SWORD_SPELL_02.get()).setPitch(0));
+        AudioVisualUtils.playSound(context.world(), context.origin(), new Sound(SoundEvents.ITEM_TRIDENT_THUNDER.value()));
+
+        return true;
+    }
+
+    @Override
+    public boolean canActivate(WeaponAbilityContext context) {
+        return context.actor().isAlive();
+    }
+
+    @Override
+    public void stop(ItemStack stack, ServerWorld world, LivingEntity user, int remainingDuration) {
+        int chargeTime = getMaxUseTime(stack, user) - remainingDuration;
+
+        List<LightbeamEntity> beams = SummonUtils.getOwnedAbilities(user, LightbeamEntity.class);
+
+        if(chargeTime < 10) {
+            beams.forEach(LightbeamEntity::stopFiring);
+
+            if(user instanceof PlayerEntity player) {
+                player.getItemCooldownManager().set(ItemRegistry.LUSTROUS_MOXIE.get(), LustrousMoxieItem.SETTINGS.cancelCooldown);
+            }
+        } else {
+            beams.forEach(LightbeamEntity::tryFire);
+            AudioVisualUtils.playSound(world, user.getPos(), new Sound(SoundEvents.ITEM_TRIDENT_THUNDER.value()));
+        }
+    }
+
+    @Override
+    public void usageTick(World world, LivingEntity user, ItemStack stack, int remainingTicks) {
+        if(world.isClient) return;
+
+        if (remainingTicks == getMaxUseTime(stack, user) - 1) {
+            SummonUtils.spawnAbility(new LightbeamEntity(user, user.getPos()), user);
+            AudioVisualUtils.playSound(world, user.getPos(), new Sound(SoundRegistry.MAGIC_SWORD_SPELL_02.get()).setPitch(0));
+        }
+    }
+
+    @Override
+    public FootfallParticles getFootfalls() {
+        return new FootfallParticles(ParticleTypes.WAX_OFF);
     }
 
     @Override
     public void appendTooltip(ItemStack itemStack, TooltipContext tooltipContext, List<Text> tooltip, TooltipType type) {
-        Style textStyle = Styles.TEXT;
-        Style abilityStyle = Styles.ABILITY;
-        Style rightClickStyle = Styles.RIGHT_CLICK;
-
         tooltip.add(Text.literal(""));
-        tooltip.add(Text.translatable("item.simplymore.lustrous_moxie.tooltip1").setStyle(abilityStyle));
-        tooltip.add(Text.translatable("item.simplymore.lustrous_moxie.tooltip2").setStyle(textStyle));
-        tooltip.add(Text.translatable("item.simplymore.lustrous_moxie.tooltip3").setStyle(textStyle));
-        tooltip.add(Text.translatable("item.simplymore.lustrous_moxie.tooltip4").setStyle(textStyle));
-        tooltip.add(Text.translatable("item.simplymore.lustrous_moxie.tooltip5").setStyle(textStyle));
-        tooltip.add(Text.translatable("item.simplymore.lustrous_moxie.tooltip6").setStyle(textStyle));
+        tooltip.add(Text.translatable("item.simplymore.lustrous_moxie.tooltip1").setStyle(Styles.ABILITY));
+        tooltip.add(Text.translatable("item.simplymore.lustrous_moxie.tooltip2", SETTINGS.maxOrbs).setStyle(Styles.TEXT));
         tooltip.add(Text.literal(""));
-        tooltip.add(Text.translatable("item.simplyswords.onrightclickheld").setStyle(rightClickStyle));
-        tooltip.add(Text.translatable("item.simplymore.lustrous_moxie.tooltip7").setStyle(textStyle));
-        tooltip.add(Text.translatable("item.simplymore.lustrous_moxie.tooltip8").setStyle(textStyle));
-        tooltip.add(Text.translatable("item.simplymore.lustrous_moxie.tooltip9").setStyle(textStyle));
-        tooltip.add(Text.translatable("item.simplymore.lustrous_moxie.tooltip10").setStyle(textStyle));
+        tooltip.add(Text.translatable("item.simplymore.lustrous_moxie.tooltip3").setStyle(Styles.TEXT));
+        tooltip.add(Text.literal(""));
+        tooltip.add(Text.translatable("item.simplyswords.onrightclickheld").setStyle(Styles.RIGHT_CLICK));
+        tooltip.add(Text.translatable("item.simplymore.lustrous_moxie.tooltip4").setStyle(Styles.TEXT));
+        appendAbilityCooldownTooltip(tooltip, itemStack, SETTINGS.cooldown);
 
         super.appendTooltip(itemStack, tooltipContext, tooltip, type);
     }
 
     public static class EffectSettings extends TooltipSettings {
         public EffectSettings() {
-            super(new ItemStackTooltipAppender(ModItemsRegistry.LUSTROUS_MOXIE));
+            super(new ItemStackTooltipAppender(ItemRegistry.LUSTROUS_MOXIE));
         }
 
         @ValidatedFloat.Restrict(min = 0f, max = 1f)
@@ -201,16 +207,30 @@ public class LustrousMoxieItem extends SimplyMoreUniqueSwordItem {
         @ValidatedInt.Restrict(min = 0)
         public int cooldown = 400;
         @ValidatedInt.Restrict(min = 0)
-        public int stunTime = 30;
+        public int cancelCooldown = 200;
         @ValidatedInt.Restrict(min = 0)
-        public int range = 20;
+        public int orbDuration = 2400;
         @ValidatedInt.Restrict(min = 0)
-        public int aoe = 5;
-        @ValidatedFloat.Restrict(min = 0f)
-        public float knockbackStrength = 2f;
-        @ValidatedFloat.Restrict(min = 0f)
-        public float targetDamage = 15f;
-        @ValidatedFloat.Restrict(min = 0f)
-        public float aoeDamage = 10f;
+        public int maxOrbs = 3;
+        @ValidatedFloat.Restrict(min = 0)
+        public float explosionDamage = 8;
+        @ValidatedInt.Restrict(min = 0)
+        public int dazzleDuration = 120;
+        @ValidatedFloat.Restrict(min = 0)
+        public float minSpeed = 0.8f;
+        @ValidatedFloat.Restrict(min = 0)
+        public float maxSpeed = 2f;
+        @ValidatedInt.Restrict(min = 0)
+        public int beamDuration = 40;
+        @ValidatedInt.Restrict(min = 0)
+        public int maxChargeTime = 40;
+        @ValidatedFloat.Restrict(min = 0)
+        public float minSize = 1f;
+        @ValidatedFloat.Restrict(min = 0)
+        public float maxSize = 2f;
+        @ValidatedInt.Restrict(min = 0)
+        public int glowDuration = 80;
+        @ValidatedFloat.Restrict(min = 0)
+        public int beamDamage = 8;
     }
 }

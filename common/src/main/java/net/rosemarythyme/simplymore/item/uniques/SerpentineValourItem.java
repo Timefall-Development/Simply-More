@@ -2,104 +2,85 @@ package net.rosemarythyme.simplymore.item.uniques;
 
 import me.fzzyhmstrs.fzzy_config.validation.number.ValidatedFloat;
 import me.fzzyhmstrs.fzzy_config.validation.number.ValidatedInt;
-import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.effect.StatusEffects;
-import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.ToolMaterial;
 import net.minecraft.item.tooltip.TooltipType;
 import net.minecraft.particle.ParticleTypes;
-import net.minecraft.sound.SoundCategory;
+import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Style;
 import net.minecraft.text.Text;
-import net.minecraft.util.Hand;
-import net.minecraft.util.TypedActionResult;
-import net.minecraft.util.math.Box;
-import net.minecraft.world.World;
-import net.rosemarythyme.simplymore.entity.PoisonBoltAreaEffectCloudEntity;
 import net.rosemarythyme.simplymore.item.SimplyMoreUniqueSwordItem;
-import net.rosemarythyme.simplymore.registry.ModEffectsRegistry;
-import net.rosemarythyme.simplymore.registry.ModItemsRegistry;
-import net.rosemarythyme.simplymore.util.SimplyMoreHelperMethods;
+import net.rosemarythyme.simplymore.registry.StatusEffectRegistry;
+import net.rosemarythyme.simplymore.registry.item.ItemRegistry;
+import net.rosemarythyme.simplymore.util.data.FootfallParticles;
 import net.sweenus.simplyswords.config.settings.ItemStackTooltipAppender;
 import net.sweenus.simplyswords.config.settings.TooltipSettings;
-import net.sweenus.simplyswords.registry.SoundRegistry;
+import net.sweenus.simplyswords.item.interfaces.TwoHandedWeapon;
 import net.sweenus.simplyswords.util.Styles;
 
 import java.util.List;
 
 
-public class SerpentineValourItem extends SimplyMoreUniqueSwordItem {
-    int skillCooldown = effect.serpentine_valour.cooldown;
+public class SerpentineValourItem extends SimplyMoreUniqueSwordItem implements TwoHandedWeapon {
+    int skillCooldown = UNIQUE_CONFIG.serpentine_valour.cooldown;
 
-    public SerpentineValourItem(ToolMaterial toolMaterial, int attackDamage, float attackSpeed, Settings settings) {
-        super(toolMaterial, attackDamage, attackSpeed, SwordTypes.SWORD, settings);
+    public SerpentineValourItem(ToolMaterial toolMaterial, int attackDamage, float attackSpeed) {
+        super(toolMaterial, attackDamage, attackSpeed);
     }
 
 
     @Override
-    public boolean postHit(ItemStack stack, LivingEntity target, LivingEntity attacker) {
-        if (attacker.getWorld().isClient())
-            return super.postHit(stack, target, attacker);
+    public void onHit(ItemStack stack, LivingEntity target, LivingEntity attacker, ServerWorld world, int consecutiveHits, boolean isFirstInTick) {
+        if (attacker.getWorld().isClient()) return;
 
-        if (target.hasStatusEffect(StatusEffects.POISON) || target.hasStatusEffect(ModEffectsRegistry.getReference(ModEffectsRegistry.VENOM))) {
+        if (target.hasStatusEffect(StatusEffects.POISON) || target.hasStatusEffect(StatusEffectRegistry.getReference(StatusEffectRegistry.VENOM))) {
             target.timeUntilRegen = 0;
-            target.damage(target.getDamageSources().generic(), effect.serpentine_valour.damageBonus);
+            target.damage(target.getDamageSources().generic(), UNIQUE_CONFIG.serpentine_valour.damageBonus);
         }
-
-        return super.postHit(stack, target, attacker);
     }
 
-    @Override
-    public TypedActionResult<ItemStack> use(World world, PlayerEntity user, Hand hand) {
-        if (!user.getWorld().isClient()) {
-            Box entitySearchBox = new Box(
-                    user.getX() - 5,
-                    user.getY() - 5,
-                    user.getZ() - 5,
-                    user.getX() + 5,
-                    user.getY() + 5,
-                    user.getZ() + 5
-            );
-
-            boolean hasEnemies = user.getWorld().getNonSpectatingEntities(LivingEntity.class, entitySearchBox).stream()
-                    .anyMatch(entity -> entity != user && !SimplyMoreHelperMethods.checkFriendlyFire(entity, user));
-
-            int poisonBoltAreaEffectCloudEntityBehavior = hasEnemies ? -2 : 0;
-
-            for (int j = 0; j < 4; j++) {
-
-                int offsetX = j % 2 == 0
-                        ? (j / 2 == 0 ? -1 : 1)
-                        : 0;
-
-                int offsetZ = j % 2 == 1
-                        ? (j / 2 == 0 ? -1 : 1)
-                        : 0;
-
-                PoisonBoltAreaEffectCloudEntity entity = new PoisonBoltAreaEffectCloudEntity(
-                        user.getWorld(),
-                        user.getX() + offsetX,  // Add the x-offset to the user's x-coordinate
-                        user.getY() + 2,           // Keep the y-coordinate constant (2 blocks above the user)
-                        user.getZ() + offsetZ,     // Add the z-offset to the user's z-coordinate
-                        user,
-                        poisonBoltAreaEffectCloudEntityBehavior
-                );
-
-                // Spawn the entity in the world
-                world.spawnEntity(entity);
-            }
-            user.getWorld().playSound(null, user.getBlockPos(), SoundRegistry.MAGIC_SHAMANIC_VOICE_15.get(), SoundCategory.PLAYERS, 0.4f, 1);
-        }
-        user.getItemCooldownManager().set(this, skillCooldown);
-        return super.use(world, user, hand);
-    }
+//    @Override
+//    public TypedActionResult<ItemStack> use(World world, PlayerEntity user, Hand hand) {
+//        if (!user.getWorld().isClient()) {
+//            Box entitySearchBox = MathUtils.createCubeBox(user.getPos(), 5);
+//
+//            boolean hasEnemies = !AttackUtils.cuboidAttack(user, entitySearchBox).isEmpty();
+//
+//            int poisonBoltAreaEffectCloudEntityBehavior = hasEnemies ? -2 : 0;
+//
+//            for (int j = 0; j < 4; j++) {
+//
+//                int offsetX = j % 2 == 0
+//                        ? (j / 2 == 0 ? -1 : 1)
+//                        : 0;
+//
+//                int offsetZ = j % 2 == 1
+//                        ? (j / 2 == 0 ? -1 : 1)
+//                        : 0;
+//
+//                PoisonBoltAreaEffectCloudEntity entity = new PoisonBoltAreaEffectCloudEntity(
+//                        user.getWorld(),
+//                        user.getX() + offsetX,  // Add the x-offset to the user's x-coordinate
+//                        user.getY() + 2,           // Keep the y-coordinate constant (2 blocks above the user)
+//                        user.getZ() + offsetZ,     // Add the z-offset to the user's z-coordinate
+//                        user,
+//                        poisonBoltAreaEffectCloudEntityBehavior
+//                );
+//
+//                // Spawn the entity in the world
+//                world.spawnEntity(entity);
+//            }
+//            user.getWorld().playSound(null, user.getBlockPos(), SoundRegistry.MAGIC_SHAMANIC_VOICE_15.get(), SoundCategory.PLAYERS, 0.4f, 1);
+//        }
+//        user.getItemCooldownManager().set(this, skillCooldown);
+//        return super.use(world, user, hand);
+//    }
 
     @Override
-    public void inventoryTick(ItemStack stack, World world, Entity entity, int slot, boolean selected) {
-        SimplyMoreHelperMethods.simplyMore$footfallsHelper(entity, stack, world, ParticleTypes.SNEEZE, ParticleTypes.SNEEZE, ParticleTypes.SPORE_BLOSSOM_AIR);
-        super.inventoryTick(stack, world, entity, slot, selected);
+    public FootfallParticles getFootfalls() {
+        return new FootfallParticles(ParticleTypes.SNEEZE, ParticleTypes.SNEEZE, ParticleTypes.SPORE_BLOSSOM_AIR);
     }
 
     @Override
@@ -111,20 +92,16 @@ public class SerpentineValourItem extends SimplyMoreUniqueSwordItem {
         tooltip.add(Text.literal(""));
         tooltip.add(Text.translatable("item.simplymore.serpentine_valour.tooltip1").setStyle(abilityStyle));
         tooltip.add(Text.translatable("item.simplymore.serpentine_valour.tooltip2").setStyle(textStyle));
-        tooltip.add(Text.translatable("item.simplymore.serpentine_valour.tooltip3").setStyle(textStyle));
         tooltip.add(Text.literal(""));
         tooltip.add(Text.translatable("item.simplyswords.onrightclick").setStyle(rightClickStyle));
         tooltip.add(Text.translatable("item.simplymore.serpentine_valour.tooltip4").setStyle(textStyle));
-        tooltip.add(Text.translatable("item.simplymore.serpentine_valour.tooltip5").setStyle(textStyle));
-        tooltip.add(Text.translatable("item.simplymore.serpentine_valour.tooltip6").setStyle(textStyle));
-        tooltip.add(Text.translatable("item.simplymore.serpentine_valour.tooltip7").setStyle(textStyle));
 
         super.appendTooltip(itemStack, tooltipContext, tooltip, type);
     }
 
     public static class EffectSettings extends TooltipSettings {
         public EffectSettings() {
-            super(new ItemStackTooltipAppender(ModItemsRegistry.SERPENTINE_VALOUR));
+            super(new ItemStackTooltipAppender(ItemRegistry.SERPENTINE_VALOUR));
         }
 
         @ValidatedInt.Restrict(min = 0)
